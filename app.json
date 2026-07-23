@@ -1,0 +1,41 @@
+{
+  "name": "rangeela-shipping-manager",
+  "description": "Rangeelaa shipping manager — preorder emails, Thursday invoices, Friday reset",
+  "repository": "https://github.com/YOUR_ORG/rangeela-shipping-manager",
+  "success_url": "/",
+  "env": {
+    "KLAVIYO_API_KEY": {
+      "description": "Klaviyo private API key (pk_...)",
+      "required": true
+    },
+    "KLAVIYO_THURSDAY_TEMPLATE_ID": {
+      "description": "Klaviyo template ID for Thursday shipping invoice",
+      "required": false
+    },
+    "CRON_SECRET": {
+      "description": "Bearer token for /api/cron/* routes",
+      "generator": "secret"
+    },
+    "CRON_SHOP": {
+      "description": "Shop domain e.g. your-store.myshopify.com",
+      "required": true
+    },
+    "THURSDAY_WAIT_URL": {
+      "description": "Optional wait URL passed to Thursday Klaviyo email",
+      "required": false
+    },
+    "SHOPIFY_API_KEY": { "required": true },
+    "SHOPIFY_API_SECRET": { "required": true },
+    "SCOPES": {
+      "description": "Comma-separated Shopify scopes",
+      "value": "read_orders,write_orders,read_customers,write_draft_orders,read_draft_orders,read_products,write_products,write_metaobjects,write_metaobject_definitions"
+    },
+    "SHOPIFY_APP_URL": {
+      "description": "Public app URL (Heroku URL)",
+      "required": true
+    },
+    "NODE_ENV": { "value": "production" }
+  },
+  "addons": ["scheduler:standard"],
+  "buildpacks": [{ "url": "heroku/nodejs" }]
+}

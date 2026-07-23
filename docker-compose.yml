@@ -1,0 +1,16 @@
+# PostgreSQL for local Phase 0 / Shopify session storage
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: rangeela
+      POSTGRES_PASSWORD: rangeela
+      POSTGRES_DB: rangeela_shipping
+    volumes:
+      - rangeela_pgdata:/var/lib/postgresql/data
+
+volumes:
+  rangeela_pgdata:

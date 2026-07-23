@@ -1,0 +1,2 @@
+# This file is used by Prisma to detect the database provider for migrations.
+provider = "postgresql"
