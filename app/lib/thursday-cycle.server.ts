@@ -272,11 +272,53 @@ async function setDraftMetafield(
   );
 }
 
+function serializeLinkedOrderIds(linkedOrderIds: Array<string | number>) {
+  return JSON.stringify(linkedOrderIds.map(String));
+}
+
+async function attachLinkedOrderIdsToDraft(
+  admin: AdminGraphql,
+  draftOrderId: string,
+  linkedOrderIds: Array<string | number>,
+) {
+  if (!linkedOrderIds.length) return;
+
+  await graphqlJson(
+    admin,
+    `#graphql
+      mutation AttachLinkedOrderIdsToDraft($input: DraftOrderInput!) {
+        draftOrderUpdate(input: $input) {
+          draftOrder { id noteAttributes { name value } }
+          userErrors { field message }
+        }
+      }
+    `,
+    {
+      input: {
+        id: draftOrderId,
+        noteAttributes: [
+          {
+            name: "linked_order_ids",
+            value: serializeLinkedOrderIds(linkedOrderIds),
+          },
+        ],
+      },
+    },
+  );
+
+  console.log(
+    "Thursday draft invoice linked_order_ids attached:",
+    draftOrderId,
+    linkedOrderIds,
+  );
+}
+
 async function createShippingDraft(
   admin: AdminGraphql,
   orders: CycleOrder[],
   email: string,
   amount: string,
+  linkedOrderIds: Array<string | number>,
 ): Promise<{ id: string; invoiceUrl: string | null; name: string }> {
   const note = `Combined orders: ${orders.map((o) => o.name).join(", ")}`;
   const primary = orders[0]!;
@@ -290,6 +332,12 @@ async function createShippingDraft(
       {
         key: "source_order_ids",
         value: orders.map((o) => o.id).join(","),
+      },
+    ],
+    noteAttributes: [
+      {
+        name: "linked_order_ids",
+        value: serializeLinkedOrderIds(linkedOrderIds),
       },
     ],
     lineItems: [
@@ -427,6 +475,7 @@ export async function runThursdayCycle(
         orders,
         email,
         shippingAmount,
+        orders.map((o) => o.id),
       );
       row.draftOrderId = draft.id;
       row.invoiceUrl = draft.invoiceUrl || undefined;

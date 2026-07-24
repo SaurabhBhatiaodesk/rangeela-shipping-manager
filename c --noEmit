@@ -1,0 +1,324 @@
+[1mdiff --git a/app/lib/orders-updated-webhook.server.ts b/app/lib/orders-updated-webhook.server.ts[m
+[1mindex a32451b..8c02fdd 100644[m
+[1m--- a/app/lib/orders-updated-webhook.server.ts[m
+[1m+++ b/app/lib/orders-updated-webhook.server.ts[m
+[36m@@ -1,155 +1,184 @@[m
+[31m-import { TAGS, hasTag, normalizeTags } from "./tags";[m
+[31m-import { sendStatusEmailIfNeeded } from "./send-status-email.server";[m
+[31m-import { graphqlJson, type AdminGraphql } from "./cycle-shared.server";[m
+[31m-[m
+[31m-const META_NAMESPACE = "rangeela";[m
+[31m-const META_DRAFT_KEY = "thursday_draft_id";[m
+[31m-[m
+[31m-const STATUS_EMAIL_JOBS = [[m
+[31m-  {[m
+[31m-    statusTag: TAGS.PIECE_MADE,[m
+[31m-    sentTag: TAGS.PIECE_MADE_EMAIL_SENT,[m
+[31m-  },[m
+[31m-  {[m
+[31m-    statusTag: TAGS.LEAVING_FOR_CANADA,[m
+[31m-    sentTag: TAGS.LEAVING_EMAIL_SENT,[m
+[31m-  },[m
+[31m-  {[m
+[31m-    statusTag: TAGS.ARRIVED_IN_CANADA,[m
+[31m-    sentTag: TAGS.ARRIVED_EMAIL_SENT,[m
+[31m-  },[m
+[31m-] as const;[m
+[31m-[m
+[31m-/**[m
+[31m- * Task 1: for each status tag present without email-sent, send Klaviyo once.[m
+[31m- */[m
+[31m-export async function processStatusEmailsFromOrderUpdate([m
+[31m-  admin: AdminGraphql,[m
+[31m-  options: {[m
+[31m-    orderGid: string;[m
+[31m-    email: string | null;[m
+[31m-    tags: string[];[m
+[31m-  },[m
+[31m-): Promise<void> {[m
+[31m-  const { orderGid, email, tags } = options;[m
+[31m-[m
+[31m-  for (const job of STATUS_EMAIL_JOBS) {[m
+[31m-    const result = await sendStatusEmailIfNeeded(admin, {[m
+[31m-      orderId: orderGid,[m
+[31m-      email,[m
+[31m-      tags,[m
+[31m-      statusTag: job.statusTag,[m
+[31m-      sentTag: job.sentTag,[m
+[31m-    });[m
+[31m-    if (!result.ok) {[m
+[31m-      console.error([m
+[31m-        `[orders/updated] status email failed for ${orderGid} ${job.statusTag}:`,[m
+[31m-        result.error,[m
+[31m-      );[m
+[31m-    } else if (!result.skipped) {[m
+[31m-      console.log([m
+[31m-        `[orders/updated] sent ${job.statusTag} email for ${orderGid}`,[m
+[31m-      );[m
+[31m-      // Avoid re-sending other jobs with stale tags list in same request[m
+[31m-      tags.push(job.sentTag);[m
+[32m+[m[32mimport type { AdminGraphql } from "./cycle-shared.server";[m
+[32m+[m[32mimport { graphqlJson } from "./cycle-shared.server";[m
+[32m+[m
+[32m+[m[32mfunction parseLinkedOrderIds(value: unknown): string[] {[m
+[32m+[m[32m  if (typeof value !== "string") return [];[m
+[32m+[m[32m  const trimmed = value.trim();[m
+[32m+[m[32m  if (!trimmed) return [];[m
+[32m+[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const parsed = JSON.parse(trimmed);[m
+[32m+[m[32m    if (Array.isArray(parsed)) {[m
+[32m+[m[32m      return parsed[m
+[32m+[m[32m        .flatMap((item) =>[m
+[32m+[m[32m          typeof item === "string" || typeof item === "number"[m
+[32m+[m[32m            ? String(item).trim()[m
+[32m+[m[32m            : [],[m
+[32m+[m[32m        )[m
+[32m+[m[32m        .filter(Boolean);[m
+     }[m
+[32m+[m[32m  } catch {[m
+[32m+[m[32m    // not JSON[m
+   }[m
+[32m+[m
+[32m+[m[32m  return trimmed[m
+[32m+[m[32m    .split(/[\s,|,]+/)[m
+[32m+[m[32m    .map((item) => item.trim())[m
+[32m+[m[32m    .filter(Boolean);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction extractLinkedOrderIdsFromPayload(orderPayload: any): string[] {[m
+[32m+[m[32m  const ids = new Set<string>();[m
+[32m+[m
+[32m+[m[32m  if (Array.isArray(orderPayload?.note_attributes)) {[m
+[32m+[m[32m    for (const attr of orderPayload.note_attributes) {[m
+[32m+[m[32m      if (attr?.name === "linked_order_ids" && attr?.value) {[m
+[32m+[m[32m        parseLinkedOrderIds(attr.value).forEach((id) => ids.add(id));[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  if (typeof orderPayload?.note === "string") {[m
+[32m+[m[32m    const note = orderPayload.note.trim();[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      const parsed = JSON.parse(note);[m
+[32m+[m[32m      if (parsed?.linked_order_ids) {[m
+[32m+[m[32m        parseLinkedOrderIds(JSON.stringify(parsed.linked_order_ids)).forEach([m
+[32m+[m[32m          (id) => ids.add(id),[m
+[32m+[m[32m        );[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } catch {[m
+[32m+[m[32m      const match = note.match(/linked_order_ids\s*[:=]\s*([\d,\s|]+)/i);[m
+[32m+[m[32m      if (match?.[1]) {[m
+[32m+[m[32m        parseLinkedOrderIds(match[1]).forEach((id) => ids.add(id));[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  if (orderPayload?.tags) {[m
+[32m+[m[32m    const tags =[m
+[32m+[m[32m      typeof orderPayload.tags === "string"[m
+[32m+[m[32m        ? orderPayload.tags.split(",")[m
+[32m+[m[32m        : Array.isArray(orderPayload.tags)[m
+[32m+[m[32m        ? orderPayload.tags[m
+[32m+[m[32m        : [];[m
+[32m+[m[32m    for (const tag of tags) {[m
+[32m+[m[32m      const match = String(tag).match(/linked_order_ids\s*[:=]\s*([\d,\s|]+)/i);[m
+[32m+[m[32m      if (match?.[1]) {[m
+[32m+[m[32m        parseLinkedOrderIds(match[1]).forEach((id) => ids.add(id));[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  return [...ids];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction normalizeOrderGid(id: string): string | null {[m
+[32m+[m[32m  const value = String(id || "").trim();[m
+[32m+[m[32m  if (!value) return null;[m
+[32m+[m[32m  if (value.startsWith("gid://")) return value;[m
+[32m+[m[32m  if (/^\d+$/.test(value)) return `gid://shopify/Order/${value}`;[m
+[32m+[m[32m  return null;[m
+ }[m
+ [m
+[31m-/**[m
+[31m- * Task 4b: when pushed-to-next-weekend is present, void linked Thursday draft.[m
+[31m- */[m
+[31m-export async function voidThursdayDraftIfPushed([m
+[32m+[m[32mexport async function processShippingPaidTagging([m
+   admin: AdminGraphql,[m
+[31m-  orderGid: string,[m
+[31m-  tags: string[],[m
+[31m-): Promise<void> {[m
+[31m-  if (!hasTag(tags, TAGS.PUSHED_TO_NEXT_WEEKEND)) {[m
+[32m+[m[32m  orderPayload: any,[m
+[32m+[m[32m) {[m
+[32m+[m[32m  const invoiceId =[m
+[32m+[m[32m    String(orderPayload.admin_graphql_api_id || orderPayload.id || "unknown");[m
+[32m+[m[32m  const financialStatus = String(orderPayload.financial_status || "").toLowerCase();[m
+[32m+[m
+[32m+[m[32m  if (financialStatus !== "paid") {[m
+[32m+[m[32m    console.log("shipping-paid tagging skipped; invoice not paid:", invoiceId);[m
+     return;[m
+   }[m
+ [m
+[31m-  const json = await graphqlJson([m
+[31m-    admin,[m
+[31m-    `#graphql[m
+[31m-      query OrderThursdayDraft($id: ID!) {[m
+[31m-        order(id: $id) {[m
+[31m-          id[m
+[31m-          metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {[m
+[31m-            id[m
+[31m-            value[m
+[31m-          }[m
+[31m-        }[m
+[31m-      }`,[m
+[31m-    { id: orderGid },[m
+[31m-  );[m
+[32m+[m[32m  console.log("paid invoice detected:", invoiceId);[m
+ [m
+[31m-  const order = json.data?.order;[m
+[31m-  const draftId = order?.metafield?.value as string | undefined;[m
+[31m-  if (!draftId) {[m
+[31m-    console.log([m
+[31m-      `[orders/updated] pushed tag on ${orderGid} but no thursday_draft_id metafield`,[m
+[31m-    );[m
+[32m+[m[32m  const linkedOrderIds = extractLinkedOrderIdsFromPayload(orderPayload);[m
+[32m+[m[32m  if (linkedOrderIds.length === 0) {[m
+[32m+[m[32m    console.log("No linked original orders found on paid invoice:", invoiceId);[m
+     return;[m
+   }[m
+ [m
+[31m-  const del = await graphqlJson([m
+[31m-    admin,[m
+[31m-    `#graphql[m
+[31m-      mutation WebhookDeleteThursdayDraft($input: DraftOrderDeleteInput!) {[m
+[31m-        draftOrderDelete(input: $input) {[m
+[31m-          deletedId[m
+[31m-          userErrors { message }[m
+[31m-        }[m
+[31m-      }`,[m
+[31m-    { input: { id: draftId } },[m
+[32m+[m[32m  console.log([m
+[32m+[m[32m    "linked original orders found for paid invoice:",[m
+[32m+[m[32m    invoiceId,[m
+[32m+[m[32m    linkedOrderIds,[m
+   );[m
+ [m
+[31m-  const userErrors = del.data?.draftOrderDelete?.userErrors ?? [];[m
+[31m-  if (userErrors.length) {[m
+[31m-    console.error([m
+[31m-      `[orders/updated] draftOrderDelete errors for ${orderGid}:`,[m
+[31m-      userErrors,[m
+[31m-    );[m
+[31m-  } else {[m
+[31m-    console.log([m
+[31m-      `[orders/updated] deleted draft ${draftId} for order ${orderGid}`,[m
+[31m-    );[m
+[31m-  }[m
+[32m+[m[32m  for (const linkedId of linkedOrderIds) {[m
+[32m+[m[32m    const linkedOrderGid = normalizeOrderGid(linkedId);[m
+[32m+[m[32m    if (!linkedOrderGid) {[m
+[32m+[m[32m      console.log("skipped linked order because ID is invalid:", linkedId);[m
+[32m+[m[32m      continue;[m
+[32m+[m[32m    }[m
+ [m
+[31m-  if (order?.metafield?.id) {[m
+[31m-    await graphqlJson([m
+[31m-      admin,[m
+[31m-      `#graphql[m
+[31m-        mutation WebhookClearThursdayDraftMetafield($metafields: [MetafieldIdentifierInput!]!) {[m
+[31m-          metafieldsDelete(metafields: $metafields) {[m
+[31m-            userErrors { message }[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      const fetchRes: any = await graphqlJson([m
+[32m+[m[32m        admin,[m
+[32m+[m[32m        `#graphql[m
+[32m+[m[32m          query GetOrderTags($id: ID!) {[m
+[32m+[m[32m            order(id: $id) {[m
+[32m+[m[32m              id[m
+[32m+[m[32m              tags[m
+[32m+[m[32m            }[m
+           }[m
+[31m-        }`,[m
+[31m-      {[m
+[31m-        metafields: [[m
+[31m-          {[m
+[31m-            ownerId: orderGid,[m
+[31m-            namespace: META_NAMESPACE,[m
+[31m-            key: META_DRAFT_KEY,[m
+[32m+[m[32m        `,[m
+[32m+[m[32m        { id: linkedOrderGid },[m
+[32m+[m[32m      );[m
+[32m+[m
+[32m+[m[32m      const existingTags =[m
+[32m+[m[32m        fetchRes?.data?.order?.tags ??[m
+[32m+[m[32m        fetchRes?.body?.data?.order?.tags ??[m
+[32m+[m[32m        [];[m
+[32m+[m[32m      const tagsArray = Array.isArray(existingTags)[m
+[32m+[m[32m        ? existingTags[m
+[32m+[m[32m        : String(existingTags || "")[m
+[32m+[m[32m            .split(",")[m
+[32m+[m[32m            .map((tag) => tag.trim())[m
+[32m+[m[32m            .filter(Boolean);[m
+[32m+[m
+[32m+[m[32m      if (tagsArray.includes("shipping-paid")) {[m
+[32m+[m[32m        console.log([m
+[32m+[m[32m          `skipped tagging order ${linkedId} (already has shipping-paid)`,[m
+[32m+[m[32m        );[m
+[32m+[m[32m        continue;[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      const updatedTags = Array.from(new Set([...tagsArray, "shipping-paid"])).join([m
+[32m+[m[32m        ", ",[m
+[32m+[m[32m      );[m
+[32m+[m
+[32m+[m[32m      const updateRes: any = await graphqlJson([m
+[32m+[m[32m        admin,[m
+[32m+[m[32m        `#graphql[m
+[32m+[m[32m          mutation OrderUpdate($input: OrderInput!) {[m
+[32m+[m[32m            orderUpdate(input: $input) {[m
+[32m+[m[32m              order { id tags }[m
+[32m+[m[32m              userErrors { field message }[m
+[32m+[m[32m            }[m
+[32m+[m[32m          }[m
+[32m+[m[32m        `,[m
+[32m+[m[32m        {[m
+[32m+[m[32m          input: {[m
+[32m+[m[32m            id: linkedOrderGid,[m
+[32m+[m[32m            tags: updatedTags,[m
+           },[m
+[31m-        ],[m
+[31m-      },[m
+[31m-    );[m
+[31m-  }[m
+[31m-}[m
+[32m+[m[32m        },[m
+[32m+[m[32m      );[m
+ [m
+[31m-export function orderGidFromWebhookPayload(payload: {[m
+[31m-  admin_graphql_api_id?: string;[m
+[31m-  id?: number | string;[m
+[31m-}): string {[m
+[31m-  if (payload.admin_graphql_api_id) {[m
+[31m-    return payload.admin_graphql_api_id;[m
+[32m+[m[32m      const userErrors =[m
+[32m+[m[32m        updateRes?.data?.orderUpdate?.userErrors ??[m
+[32m+[m[32m        updateRes?.body?.data?.orderUpdate?.userErrors;[m
+[32m+[m[32m      if (Array.isArray(userErrors) && userErrors.length > 0) {[m
+[32m+[m[32m        console.error("Failed to add shipping-paid tag to order", linkedId, userErrors);[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        console.log("shipping-paid tag added to order", linkedId);[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } catch (error) {[m
+[32m+[m[32m      console.error("Failed to process linked order", linkedId, error);[m
+[32m+[m[32m    }[m
+   }[m
+[31m-  return `gid://shopify/Order/${payload.id}`;[m
+[31m-}[m
+[31m-[m
+[31m-export function parseWebhookOrderTags(payload: {[m
+[31m-  tags?: string | string[];[m
+[31m-}): string[] {[m
+[31m-  return normalizeTags(payload.tags);[m
+ }[m

@@ -28,11 +28,6 @@ import { useEffect, useState, startTransition } from "react";
   type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
 
   export const loader = async ({ request }: LoaderFunctionArgs) => {
-    console.log(
-      "KLAVIYO_THURSDAY_TEMPLATE_ID:",
-      JSON.stringify(process.env.KLAVIYO_THURSDAY_TEMPLATE_ID),
-    );
-
     const { admin } = await authenticate.admin(request);
     const url = new URL(request.url);
     const tab = (url.searchParams.get("tab") || "preorders") as TabId;
@@ -161,6 +156,34 @@ import { useEffect, useState, startTransition } from "react";
         detail?: string;
       }>;
     } | null>(null);
+
+    const pageSize = 10;
+    const currentPage = Math.max(
+      1,
+      Number(searchParams.get("page") || "1"),
+    );
+    const totalPages = Math.max(
+      1,
+      Math.ceil(data.preorders.length / pageSize),
+    );
+    const page = Math.min(currentPage, totalPages);
+
+    const pagedPreorders = data.preorders.slice(
+      (page - 1) * pageSize,
+      page * pageSize,
+    );
+
+    const setPage = (nextPage: number) => {
+      startTransition(() => {
+        const params = new URLSearchParams(searchParams);
+        if (nextPage <= 1) {
+          params.delete("page");
+        } else {
+          params.set("page", String(nextPage));
+        }
+        setSearchParams(params);
+      });
+    };
 
     const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
     const cycleBusy = fetcher.state !== "idle";
@@ -294,73 +317,99 @@ import { useEffect, useState, startTransition } from "react";
                 </s-paragraph>
               </s-banner>
             ) : (
-              <s-table>
-                <s-table-header-row>
-                  <s-table-header listSlot="primary">Order</s-table-header>
-                  <s-table-header listSlot="secondary">Customer</s-table-header>
-                  <s-table-header listSlot="labeled">Type</s-table-header>
-                  <s-table-header listSlot="inline">Actions</s-table-header>
-                </s-table-header-row>
-                <s-table-body>
-                  {data.preorders.map((order) => (
-                    <s-table-row key={order.id}>
-                      <s-table-cell>
-                        <s-link
-                          href={`shopify://admin/orders/${order.id.split("/").pop()}`}
-                        >
-                          {order.name}
-                        </s-link>
-                      </s-table-cell>
-                      <s-table-cell>
-                        {order.customerName || order.email || "—"}
-                      </s-table-cell>
-                      <s-table-cell>
-                        {order.isSkirtDeposit ? (
-                          hasTag(order.tags, TAGS.DEPOSIT_FULFILLED) ? (
+              <>
+                <s-table>
+                  <s-table-header-row>
+                    <s-table-header listSlot="primary">Order</s-table-header>
+                    <s-table-header listSlot="secondary">Customer</s-table-header>
+                    <s-table-header listSlot="labeled">Type</s-table-header>
+                    <s-table-header listSlot="inline">Actions</s-table-header>
+                  </s-table-header-row>
+                  <s-table-body>
+                    {pagedPreorders.map((order) => (
+                      <s-table-row key={order.id}>
+                        <s-table-cell>
+                          <s-link
+                            href={`shopify://admin/orders/${order.id
+                              .split("/")
+                              .pop()}`}
+                          >
+                            {order.name}
+                          </s-link>
+                        </s-table-cell>
+                        <s-table-cell>
+                          {order.customerName || order.email || "—"}
+                        </s-table-cell>
+                        <s-table-cell>
+                          {order.isSkirtDeposit ? (
+                            hasTag(order.tags, TAGS.DEPOSIT_FULFILLED) ? (
+                              <s-badge
+                                tone="success"
+                                color="strong"
+                                icon="check-circle"
+                              >
+                                Skirt deposit
+                              </s-badge>
+                            ) : (
+                              <s-badge tone="info" color="strong">
+                                Skirt deposit
+                              </s-badge>
+                            )
+                          ) : hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
+                            hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
                             <s-badge
                               tone="success"
                               color="strong"
                               icon="check-circle"
                             >
-                              Skirt deposit
+                              Preorder
+                            </s-badge>
+                          ) : hasTag(order.tags, TAGS.LEAVING_FOR_CANADA) ? (
+                            <s-badge tone="caution" color="strong">
+                              Preorder
+                            </s-badge>
+                          ) : hasTag(order.tags, TAGS.PIECE_MADE) ? (
+                            <s-badge tone="info" color="strong">
+                              Preorder
                             </s-badge>
                           ) : (
-                            <s-badge tone="info" color="strong">
-                              Skirt deposit
-                            </s-badge>
-                          )
-                        ) : hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
-                          hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
-                          <s-badge
-                            tone="success"
-                            color="strong"
-                            icon="check-circle"
-                          >
-                            Preorder
-                          </s-badge>
-                        ) : hasTag(order.tags, TAGS.LEAVING_FOR_CANADA) ? (
-                          <s-badge tone="caution" color="strong">
-                            Preorder
-                          </s-badge>
-                        ) : hasTag(order.tags, TAGS.PIECE_MADE) ? (
-                          <s-badge tone="info" color="strong">
-                            Preorder
-                          </s-badge>
-                        ) : (
-                          <s-badge tone="neutral">Preorder</s-badge>
-                        )}
-                      </s-table-cell>
-                      <s-table-cell>
-                        <PreorderStatusButtons
-                          order={order}
-                          busyAction={busyAction}
-                          onAction={runAction}
-                        />
-                      </s-table-cell>
-                    </s-table-row>
-                  ))}
-                </s-table-body>
-              </s-table>
+                            <s-badge tone="neutral">Preorder</s-badge>
+                          )}
+                        </s-table-cell>
+                        <s-table-cell>
+                          <PreorderStatusButtons
+                            order={order}
+                            busyAction={busyAction}
+                            onAction={runAction}
+                          />
+                        </s-table-cell>
+                      </s-table-row>
+                    ))}
+                  </s-table-body>
+                </s-table>
+
+                {totalPages > 1 && (
+                  <s-stack direction="inline" gap="base" alignItems="center">
+                    <s-button
+                      variant="secondary"
+                      disabled={page <= 1}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      Previous
+                    </s-button>
+                    <s-paragraph>
+                      Page {page} of {totalPages}
+                    </s-paragraph>
+                    <s-button
+                      variant="secondary"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      Next
+                    </s-button>
+                  </s-stack>
+                )}
+              </>
             )}
           </s-section>
         )}

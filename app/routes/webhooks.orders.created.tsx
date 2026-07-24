@@ -2,25 +2,31 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { processShippingPaidTagging } from "../lib/orders-updated-webhook.server";
 
-/**
- * orders/updated webhook
- * - Task 1: status tags → Klaviyo email + email-sent tags
- * - Task 4b: pushed-to-next-weekend → void Thursday draft via metafield
- */
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { topic, shop, admin, payload } = await authenticate.webhook(request);
 
   console.log(`Received ${topic} webhook for ${shop}`);
 
   if (!admin) {
-    console.error(`[orders/updated] No admin API client available for ${shop}`);
+    console.error(
+      `[orders/create] No admin API client for ${shop} (offline session missing?)`,
+    );
     return new Response();
   }
 
+  const orderPayload = payload as {
+    id?: number | string;
+    admin_graphql_api_id?: string;
+    financial_status?: string;
+    note?: string | null;
+    note_attributes?: Array<{ name: string; value: string }>;
+    tags?: string | string[];
+  };
+
   try {
-    await processShippingPaidTagging(admin, payload);
+    await processShippingPaidTagging(admin, orderPayload);
   } catch (error) {
-    console.error(`[orders/updated] shipping-paid tagging failed:`, error);
+    console.error(`[orders/create] handler error:`, error);
   }
 
   return new Response();

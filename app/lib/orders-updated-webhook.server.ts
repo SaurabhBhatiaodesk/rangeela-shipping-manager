@@ -1,155 +1,184 @@
-import { TAGS, hasTag, normalizeTags } from "./tags";
-import { sendStatusEmailIfNeeded } from "./send-status-email.server";
-import { graphqlJson, type AdminGraphql } from "./cycle-shared.server";
+import type { AdminGraphql } from "./cycle-shared.server";
+import { graphqlJson } from "./cycle-shared.server";
 
-const META_NAMESPACE = "rangeela";
-const META_DRAFT_KEY = "thursday_draft_id";
+function parseLinkedOrderIds(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
 
-const STATUS_EMAIL_JOBS = [
-  {
-    statusTag: TAGS.PIECE_MADE,
-    sentTag: TAGS.PIECE_MADE_EMAIL_SENT,
-  },
-  {
-    statusTag: TAGS.LEAVING_FOR_CANADA,
-    sentTag: TAGS.LEAVING_EMAIL_SENT,
-  },
-  {
-    statusTag: TAGS.ARRIVED_IN_CANADA,
-    sentTag: TAGS.ARRIVED_EMAIL_SENT,
-  },
-] as const;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .flatMap((item) =>
+          typeof item === "string" || typeof item === "number"
+            ? String(item).trim()
+            : [],
+        )
+        .filter(Boolean);
+    }
+  } catch {
+    // not JSON
+  }
 
-/**
- * Task 1: for each status tag present without email-sent, send Klaviyo once.
- */
-export async function processStatusEmailsFromOrderUpdate(
-  admin: AdminGraphql,
-  options: {
-    orderGid: string;
-    email: string | null;
-    tags: string[];
-  },
-): Promise<void> {
-  const { orderGid, email, tags } = options;
+  return trimmed
+    .split(/[\s,|,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
-  for (const job of STATUS_EMAIL_JOBS) {
-    const result = await sendStatusEmailIfNeeded(admin, {
-      orderId: orderGid,
-      email,
-      tags,
-      statusTag: job.statusTag,
-      sentTag: job.sentTag,
-    });
-    if (!result.ok) {
-      console.error(
-        `[orders/updated] status email failed for ${orderGid} ${job.statusTag}:`,
-        result.error,
-      );
-    } else if (!result.skipped) {
-      console.log(
-        `[orders/updated] sent ${job.statusTag} email for ${orderGid}`,
-      );
-      // Avoid re-sending other jobs with stale tags list in same request
-      tags.push(job.sentTag);
+function extractLinkedOrderIdsFromPayload(orderPayload: any): string[] {
+  const ids = new Set<string>();
+
+  if (Array.isArray(orderPayload?.note_attributes)) {
+    for (const attr of orderPayload.note_attributes) {
+      if (attr?.name === "linked_order_ids" && attr?.value) {
+        parseLinkedOrderIds(attr.value).forEach((id) => ids.add(id));
+      }
     }
   }
+
+  if (typeof orderPayload?.note === "string") {
+    const note = orderPayload.note.trim();
+    try {
+      const parsed = JSON.parse(note);
+      if (parsed?.linked_order_ids) {
+        parseLinkedOrderIds(JSON.stringify(parsed.linked_order_ids)).forEach(
+          (id) => ids.add(id),
+        );
+      }
+    } catch {
+      const match = note.match(/linked_order_ids\s*[:=]\s*([\d,\s|]+)/i);
+      if (match?.[1]) {
+        parseLinkedOrderIds(match[1]).forEach((id) => ids.add(id));
+      }
+    }
+  }
+
+  if (orderPayload?.tags) {
+    const tags =
+      typeof orderPayload.tags === "string"
+        ? orderPayload.tags.split(",")
+        : Array.isArray(orderPayload.tags)
+        ? orderPayload.tags
+        : [];
+    for (const tag of tags) {
+      const match = String(tag).match(/linked_order_ids\s*[:=]\s*([\d,\s|]+)/i);
+      if (match?.[1]) {
+        parseLinkedOrderIds(match[1]).forEach((id) => ids.add(id));
+      }
+    }
+  }
+
+  return [...ids];
 }
 
-/**
- * Task 4b: when pushed-to-next-weekend is present, void linked Thursday draft.
- */
-export async function voidThursdayDraftIfPushed(
+function normalizeOrderGid(id: string): string | null {
+  const value = String(id || "").trim();
+  if (!value) return null;
+  if (value.startsWith("gid://")) return value;
+  if (/^\d+$/.test(value)) return `gid://shopify/Order/${value}`;
+  return null;
+}
+
+export async function processShippingPaidTagging(
   admin: AdminGraphql,
-  orderGid: string,
-  tags: string[],
-): Promise<void> {
-  if (!hasTag(tags, TAGS.PUSHED_TO_NEXT_WEEKEND)) {
+  orderPayload: any,
+) {
+  const invoiceId =
+    String(orderPayload.admin_graphql_api_id || orderPayload.id || "unknown");
+  const financialStatus = String(orderPayload.financial_status || "").toLowerCase();
+
+  if (financialStatus !== "paid") {
+    console.log("shipping-paid tagging skipped; invoice not paid:", invoiceId);
     return;
   }
 
-  const json = await graphqlJson(
-    admin,
-    `#graphql
-      query OrderThursdayDraft($id: ID!) {
-        order(id: $id) {
-          id
-          metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
-            id
-            value
-          }
-        }
-      }`,
-    { id: orderGid },
-  );
+  console.log("paid invoice detected:", invoiceId);
 
-  const order = json.data?.order;
-  const draftId = order?.metafield?.value as string | undefined;
-  if (!draftId) {
-    console.log(
-      `[orders/updated] pushed tag on ${orderGid} but no thursday_draft_id metafield`,
-    );
+  const linkedOrderIds = extractLinkedOrderIdsFromPayload(orderPayload);
+  if (linkedOrderIds.length === 0) {
+    console.log("No linked original orders found on paid invoice:", invoiceId);
     return;
   }
 
-  const del = await graphqlJson(
-    admin,
-    `#graphql
-      mutation WebhookDeleteThursdayDraft($input: DraftOrderDeleteInput!) {
-        draftOrderDelete(input: $input) {
-          deletedId
-          userErrors { message }
-        }
-      }`,
-    { input: { id: draftId } },
+  console.log(
+    "linked original orders found for paid invoice:",
+    invoiceId,
+    linkedOrderIds,
   );
 
-  const userErrors = del.data?.draftOrderDelete?.userErrors ?? [];
-  if (userErrors.length) {
-    console.error(
-      `[orders/updated] draftOrderDelete errors for ${orderGid}:`,
-      userErrors,
-    );
-  } else {
-    console.log(
-      `[orders/updated] deleted draft ${draftId} for order ${orderGid}`,
-    );
-  }
+  for (const linkedId of linkedOrderIds) {
+    const linkedOrderGid = normalizeOrderGid(linkedId);
+    if (!linkedOrderGid) {
+      console.log("skipped linked order because ID is invalid:", linkedId);
+      continue;
+    }
 
-  if (order?.metafield?.id) {
-    await graphqlJson(
-      admin,
-      `#graphql
-        mutation WebhookClearThursdayDraftMetafield($metafields: [MetafieldIdentifierInput!]!) {
-          metafieldsDelete(metafields: $metafields) {
-            userErrors { message }
+    try {
+      const fetchRes: any = await graphqlJson(
+        admin,
+        `#graphql
+          query GetOrderTags($id: ID!) {
+            order(id: $id) {
+              id
+              tags
+            }
           }
-        }`,
-      {
-        metafields: [
-          {
-            ownerId: orderGid,
-            namespace: META_NAMESPACE,
-            key: META_DRAFT_KEY,
+        `,
+        { id: linkedOrderGid },
+      );
+
+      const existingTags =
+        fetchRes?.data?.order?.tags ??
+        fetchRes?.body?.data?.order?.tags ??
+        [];
+      const tagsArray = Array.isArray(existingTags)
+        ? existingTags
+        : String(existingTags || "")
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean);
+
+      if (tagsArray.includes("shipping-paid")) {
+        console.log(
+          `skipped tagging order ${linkedId} (already has shipping-paid)`,
+        );
+        continue;
+      }
+
+      const updatedTags = Array.from(new Set([...tagsArray, "shipping-paid"])).join(
+        ", ",
+      );
+
+      const updateRes: any = await graphqlJson(
+        admin,
+        `#graphql
+          mutation OrderUpdate($input: OrderInput!) {
+            orderUpdate(input: $input) {
+              order { id tags }
+              userErrors { field message }
+            }
+          }
+        `,
+        {
+          input: {
+            id: linkedOrderGid,
+            tags: updatedTags,
           },
-        ],
-      },
-    );
-  }
-}
+        },
+      );
 
-export function orderGidFromWebhookPayload(payload: {
-  admin_graphql_api_id?: string;
-  id?: number | string;
-}): string {
-  if (payload.admin_graphql_api_id) {
-    return payload.admin_graphql_api_id;
+      const userErrors =
+        updateRes?.data?.orderUpdate?.userErrors ??
+        updateRes?.body?.data?.orderUpdate?.userErrors;
+      if (Array.isArray(userErrors) && userErrors.length > 0) {
+        console.error("Failed to add shipping-paid tag to order", linkedId, userErrors);
+      } else {
+        console.log("shipping-paid tag added to order", linkedId);
+      }
+    } catch (error) {
+      console.error("Failed to process linked order", linkedId, error);
+    }
   }
-  return `gid://shopify/Order/${payload.id}`;
-}
-
-export function parseWebhookOrderTags(payload: {
-  tags?: string | string[];
-}): string[] {
-  return normalizeTags(payload.tags);
 }
