@@ -1,4 +1,4 @@
-  import { useEffect, useState, startTransition } from "react";
+import { useEffect, useState, startTransition } from "react";
   import type {
     ActionFunctionArgs,
     HeadersFunction,
@@ -28,6 +28,11 @@
   type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
 
   export const loader = async ({ request }: LoaderFunctionArgs) => {
+    console.log(
+      "KLAVIYO_THURSDAY_TEMPLATE_ID:",
+      JSON.stringify(process.env.KLAVIYO_THURSDAY_TEMPLATE_ID),
+    );
+
     const { admin } = await authenticate.admin(request);
     const url = new URL(request.url);
     const tab = (url.searchParams.get("tab") || "preorders") as TabId;
@@ -221,287 +226,286 @@
 
     return (
       <s-page heading="Rangeela Shipping Manager" inlineSize="large">
-        <s-stack direction="block" gap="large">
-          {data.loadError && (
-            <s-banner heading="Could not load data" tone="critical">
-              <s-paragraph>{data.loadError}</s-paragraph>
-              <s-paragraph>
-                Restart the app with <s-text type="strong">shopify app dev</s-text>{" "}
-                and approve order scopes if prompted.
-              </s-paragraph>
-            </s-banner>
-          )}
-
-          <s-banner heading="Workflow steps" tone="success">
+        {data.loadError && (
+          <s-banner heading="Could not load data" tone="critical">
+            <s-paragraph>{data.loadError}</s-paragraph>
             <s-paragraph>
-              Choose a step below. The selected step uses the Polaris primary
-              button color.
+              Restart the app with <s-text type="strong">shopify app dev</s-text>{" "}
+              and approve order scopes if prompted.
             </s-paragraph>
           </s-banner>
+        )}
 
-          <s-section heading="Menu" padding="base">
-            <s-stack direction="inline" gap="small" alignItems="center">
-              <TabButton
-                active={tab === "preorders"}
-                number="01"
-                label="Preorders — Awaiting Readiness"
-                onClick={() => setTab("preorders")}
-              />
-              <TabButton
-                active={tab === "emails"}
-                number="02"
-                label="Status emails (Klaviyo)"
-                onClick={() => setTab("emails")}
-              />
-              <TabButton
-                active={tab === "thursday"}
-                number="03"
-                label="Thursday invoice"
-                onClick={() => setTab("thursday")}
-              />
-              <TabButton
-                active={tab === "alerts"}
-                number="04"
-                label="After shipping paid"
-                onClick={() => setTab("alerts")}
-              />
-              <TabButton
-                active={tab === "friday"}
-                number="05"
-                label="Friday reset"
-                onClick={() => setTab("friday")}
-              />
-            </s-stack>
-          </s-section>
+        <s-banner heading="Workflow steps" tone="success">
+          <s-paragraph>
+            Choose a step below. The selected step uses the Polaris primary
+            button color.
+          </s-paragraph>
+        </s-banner>
 
-          {tab === "preorders" && (
-            <s-section heading="Preorders — Awaiting Readiness" padding="base">
-              <s-banner heading="Status progress" tone="info">
+        <s-section heading="Menu" padding="base">
+          <s-stack direction="inline" gap="small" alignItems="center">
+            <TabButton
+              active={tab === "preorders"}
+              number="01"
+              label="Preorders — Awaiting Readiness"
+              onClick={() => setTab("preorders")}
+            />
+            <TabButton
+              active={tab === "emails"}
+              number="02"
+              label="Status emails (Klaviyo)"
+              onClick={() => setTab("emails")}
+            />
+            <TabButton
+              active={tab === "thursday"}
+              number="03"
+              label="Thursday invoice"
+              onClick={() => setTab("thursday")}
+            />
+            <TabButton
+              active={tab === "alerts"}
+              number="04"
+              label="After shipping paid"
+              onClick={() => setTab("alerts")}
+            />
+            <TabButton
+              active={tab === "friday"}
+              number="05"
+              label="Friday reset"
+              onClick={() => setTab("friday")}
+            />
+          </s-stack>
+        </s-section>
+
+        {tab === "preorders" && (
+          <s-section heading="Preorders — Awaiting Readiness" padding="base">
+            <s-banner heading="Status progress" tone="info">
+              <s-paragraph>
+                Update each preorder in order: Piece Made → Leaving for Canada →
+                Arrived in Canada. Completed steps show as green success badges.
+                Skirt deposits use Mark Deposit Fulfilled.
+              </s-paragraph>
+            </s-banner>
+            {data.preorders.length === 0 ? (
+              <s-banner heading="No preorders yet" tone="warning">
                 <s-paragraph>
-                  Update each preorder in order: Piece Made → Leaving for Canada →
-                  Arrived in Canada. Completed steps show as green success badges.
-                  Skirt deposits use Mark Deposit Fulfilled.
+                  Create a test order in the store to see status actions here.
                 </s-paragraph>
               </s-banner>
-              {data.preorders.length === 0 ? (
-                <s-banner heading="No preorders yet" tone="warning">
-                  <s-paragraph>
-                    Create a test order in the store to see status actions here.
-                  </s-paragraph>
-                </s-banner>
-              ) : (
-                <s-table>
-                  <s-table-header-row>
-                    <s-table-header listSlot="primary">Order</s-table-header>
-                    <s-table-header listSlot="secondary">Customer</s-table-header>
-                    <s-table-header listSlot="labeled">Type</s-table-header>
-                    <s-table-header listSlot="inline">Actions</s-table-header>
-                  </s-table-header-row>
-                  <s-table-body>
-                    {data.preorders.map((order) => (
-                      <s-table-row key={order.id}>
-                        <s-table-cell>
-                          <s-link
-                            href={`shopify://admin/orders/${order.id.split("/").pop()}`}
-                          >
-                            {order.name}
-                          </s-link>
-                        </s-table-cell>
-                        <s-table-cell>
-                          {order.customerName || order.email || "—"}
-                        </s-table-cell>
-                        <s-table-cell>
-                          {order.isSkirtDeposit ? (
-                            hasTag(order.tags, TAGS.DEPOSIT_FULFILLED) ? (
-                              <s-badge
-                                tone="success"
-                                color="strong"
-                                icon="check-circle"
-                              >
-                                Skirt deposit
-                              </s-badge>
-                            ) : (
-                              <s-badge tone="info" color="strong">
-                                Skirt deposit
-                              </s-badge>
-                            )
-                          ) : hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
-                            hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
+            ) : (
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header listSlot="primary">Order</s-table-header>
+                  <s-table-header listSlot="secondary">Customer</s-table-header>
+                  <s-table-header listSlot="labeled">Type</s-table-header>
+                  <s-table-header listSlot="inline">Actions</s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {data.preorders.map((order) => (
+                    <s-table-row key={order.id}>
+                      <s-table-cell>
+                        <s-link
+                          href={`shopify://admin/orders/${order.id.split("/").pop()}`}
+                        >
+                          {order.name}
+                        </s-link>
+                      </s-table-cell>
+                      <s-table-cell>
+                        {order.customerName || order.email || "—"}
+                      </s-table-cell>
+                      <s-table-cell>
+                        {order.isSkirtDeposit ? (
+                          hasTag(order.tags, TAGS.DEPOSIT_FULFILLED) ? (
                             <s-badge
                               tone="success"
                               color="strong"
                               icon="check-circle"
                             >
-                              Preorder
-                            </s-badge>
-                          ) : hasTag(order.tags, TAGS.LEAVING_FOR_CANADA) ? (
-                            <s-badge tone="caution" color="strong">
-                              Preorder
-                            </s-badge>
-                          ) : hasTag(order.tags, TAGS.PIECE_MADE) ? (
-                            <s-badge tone="info" color="strong">
-                              Preorder
+                              Skirt deposit
                             </s-badge>
                           ) : (
-                            <s-badge tone="neutral">Preorder</s-badge>
-                          )}
-                        </s-table-cell>
-                        <s-table-cell>
-                          <PreorderStatusButtons
-                            order={order}
-                            busyAction={busyAction}
-                            onAction={runAction}
-                          />
-                        </s-table-cell>
-                      </s-table-row>
-                    ))}
-                  </s-table-body>
-                </s-table>
-              )}
-            </s-section>
-          )}
+                            <s-badge tone="info" color="strong">
+                              Skirt deposit
+                            </s-badge>
+                          )
+                        ) : hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
+                          hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
+                          <s-badge
+                            tone="success"
+                            color="strong"
+                            icon="check-circle"
+                          >
+                            Preorder
+                          </s-badge>
+                        ) : hasTag(order.tags, TAGS.LEAVING_FOR_CANADA) ? (
+                          <s-badge tone="caution" color="strong">
+                            Preorder
+                          </s-badge>
+                        ) : hasTag(order.tags, TAGS.PIECE_MADE) ? (
+                          <s-badge tone="info" color="strong">
+                            Preorder
+                          </s-badge>
+                        ) : (
+                          <s-badge tone="neutral">Preorder</s-badge>
+                        )}
+                      </s-table-cell>
+                      <s-table-cell>
+                        <PreorderStatusButtons
+                          order={order}
+                          busyAction={busyAction}
+                          onAction={runAction}
+                        />
+                      </s-table-cell>
+                    </s-table-row>
+                  ))}
+                </s-table-body>
+              </s-table>
+            )}
+          </s-section>
+        )}
 
-          {tab === "emails" && (
-            <s-section heading="Status emails" padding="base">
-              <s-stack direction="block" gap="large">
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    When a status tag is added, the app creates a Klaviyo event. A
-                    live Klaviyo Flow for that metric sends the email, then the
-                    app adds an email-sent tag so it is not sent again.
-                  </s-paragraph>
-                  <s-unordered-list>
-                    <s-list-item>
-                      Piece Made → metric "Rangeela Piece Made" → template WMcvs7
-                      → tag piece-made-email-sent
-                    </s-list-item>
-                    <s-list-item>
-                      Leaving for Canada → metric "Rangeela Leaving for Canada" →
-                      template TB2w7d → tag leaving-email-sent
-                    </s-list-item>
-                    <s-list-item>
-                      Arrived in Canada → metric "Rangeela Arrived in Canada" →
-                      template XmXMMJ → tag arrived-email-sent
-                    </s-list-item>
-                  </s-unordered-list>
-                </s-stack>
-
-                <s-banner
-                  heading={
-                    data.klaviyoConfigured
-                      ? "Klaviyo is connected"
-                      : "Klaviyo API key is missing"
-                  }
-                  tone={data.klaviyoConfigured ? "success" : "warning"}
-                >
-                  <s-paragraph>
-                    To test: in Shopify Admin, add the tag{" "}
-                    <s-text type="strong">piece-made-notified</s-text> to an order.
-                    Confirm the customer receives the email and the order gets{" "}
-                    <s-text type="strong">piece-made-email-sent</s-text>.
-                  </s-paragraph>
-                </s-banner>
-
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    If an email did not send automatically, use these buttons:
-                  </s-paragraph>
-                  <s-stack direction="inline" gap="base">
-                    <s-button
-                      variant={
-                        isBusy("status_emails_run:preview")
-                          ? "primary"
-                          : "secondary"
-                      }
-                      disabled={cycleBusy}
-                      {...(isBusy("status_emails_run:preview")
-                        ? { loading: true }
-                        : {})}
-                      onClick={() => runCycle("status_emails_run", true)}
-                    >
-                      Preview only (no emails sent)
-                    </s-button>
-                    <s-button
-                      variant="primary"
-                      disabled={cycleBusy}
-                      {...(isBusy("status_emails_run:run")
-                        ? { loading: true }
-                        : {})}
-                      onClick={() => runCycle("status_emails_run", false)}
-                    >
-                      Send pending emails now
-                    </s-button>
-                  </s-stack>
-
-                  {lastEmailRun?.rows && lastEmailRun.rows.length > 0 && (
-                    <s-box padding="base" borderWidth="base" borderRadius="base">
-                      <s-stack direction="block" gap="base">
-                        <s-heading>Last check result</s-heading>
-                        <s-unordered-list>
-                          {lastEmailRun.rows.map((row, i) => {
-                            const label =
-                              row.result === "sent"
-                                ? "Email sent"
-                                : row.result === "error"
-                                  ? "Failed"
-                                  : row.detail?.includes("preview only")
-                                    ? "Preview only (not sent)"
-                                    : "Skipped";
-                            const extra =
-                              row.result === "error"
-                                ? row.detail
-                                : row.detail?.includes("would send template")
-                                  ? row.detail.replace("preview only — ", "")
-                                  : undefined;
-                            return (
-                              <s-list-item
-                                key={`${row.orderName}-${row.job}-${i}`}
-                              >
-                                {row.orderName} — {row.job}: {label}
-                                {extra ? ` — ${extra}` : ""}
-                              </s-list-item>
-                            );
-                          })}
-                        </s-unordered-list>
-                      </s-stack>
-                    </s-box>
-                  )}
-                </s-stack>
+        {tab === "emails" && (
+          <s-section heading="Status emails" padding="base">
+            <s-stack direction="block" gap="large">
+              <s-stack direction="block" gap="base">
+                <s-paragraph>
+                  When a status tag is added, the app creates a Klaviyo event. A
+                  live Klaviyo Flow for that metric sends the email, then the
+                  app adds an email-sent tag so it is not sent again.
+                </s-paragraph>
+                <s-unordered-list>
+                  <s-list-item>
+                    Piece Made → metric "Rangeela Piece Made" → template WMcvs7
+                    → tag piece-made-email-sent
+                  </s-list-item>
+                  <s-list-item>
+                    Leaving for Canada → metric "Rangeela Leaving for Canada" →
+                    template TB2w7d → tag leaving-email-sent
+                  </s-list-item>
+                  <s-list-item>
+                    Arrived in Canada → metric "Rangeela Arrived in Canada" →
+                    template XmXMMJ → tag arrived-email-sent
+                  </s-list-item>
+                </s-unordered-list>
               </s-stack>
-            </s-section>
-          )}
 
-          {tab === "thursday" && (
-            <s-section heading="Thursday shipping invoice" padding="base">
+              <s-banner
+                heading={
+                  data.klaviyoConfigured
+                    ? "Klaviyo is connected"
+                    : "Klaviyo API key is missing"
+                }
+                tone={data.klaviyoConfigured ? "success" : "warning"}
+              >
+                <s-paragraph>
+                  To test: in Shopify Admin, add the tag{" "}
+                  <s-text type="strong">piece-made-notified</s-text> to an order.
+                  Confirm the customer receives the email and the order gets{" "}
+                  <s-text type="strong">piece-made-email-sent</s-text>.
+                </s-paragraph>
+              </s-banner>
+
+              <s-stack direction="block" gap="base">
+                <s-paragraph>
+                  If an email did not send automatically, use these buttons:
+                </s-paragraph>
+                <s-stack direction="inline" gap="base">
+                  <s-button
+                    variant={
+                      isBusy("status_emails_run:preview")
+                        ? "primary"
+                        : "secondary"
+                    }
+                    disabled={cycleBusy}
+                    {...(isBusy("status_emails_run:preview")
+                      ? { loading: true }
+                      : {})}
+                    onClick={() => runCycle("status_emails_run", true)}
+                  >
+                    Preview only (no emails sent)
+                  </s-button>
+                  <s-button
+                    variant="primary"
+                    disabled={cycleBusy}
+                    {...(isBusy("status_emails_run:run")
+                      ? { loading: true }
+                      : {})}
+                    onClick={() => runCycle("status_emails_run", false)}
+                  >
+                    Send pending emails now
+                  </s-button>
+                </s-stack>
+
+                {lastEmailRun?.rows && lastEmailRun.rows.length > 0 && (
+                  <s-box padding="base" borderWidth="base" borderRadius="base">
+                    <s-stack direction="block" gap="base">
+                      <s-heading>Last check result</s-heading>
+                      <s-unordered-list>
+                        {lastEmailRun.rows.map((row, i) => {
+                          const label =
+                            row.result === "sent"
+                              ? "Email sent"
+                              : row.result === "error"
+                                ? "Failed"
+                                : row.detail?.includes("preview only")
+                                  ? "Preview only (not sent)"
+                                  : "Skipped";
+                          const extra =
+                            row.result === "error"
+                              ? row.detail
+                              : row.detail?.includes("would send template")
+                                ? row.detail.replace("preview only — ", "")
+                                : undefined;
+                          return (
+                            <s-list-item
+                              key={`${row.orderName}-${row.job}-${i}`}
+                            >
+                              {row.orderName} — {row.job}: {label}
+                              {extra ? ` — ${extra}` : ""}
+                            </s-list-item>
+                          );
+                        })}
+                      </s-unordered-list>
+                    </s-stack>
+                  </s-box>
+                )}
+              </s-stack>
+            </s-stack>
+          </s-section>
+        )}
+
+        {tab === "thursday" && (
+          <s-section heading="Thursday shipping invoice" padding="base">
+            <s-stack direction="block" gap="base">
               <s-paragraph>
                 Combines eligible preorder and ready-to-wear orders for the same
                 customer into one draft shipping invoice. Excludes Saskatoon and
                 India-only / mixed India orders.
               </s-paragraph>
-              <s-stack direction="block" gap="base">
-                <s-button-group gap="base" accessibilityLabel="Thursday cycle actions">
-                  <s-button
-                    slot="secondary-actions"
-                    variant={
-                      isBusy("thursday_run:preview") ? "primary" : "secondary"
-                    }
-                    disabled={cycleBusy}
-                    {...(isBusy("thursday_run:preview") ? { loading: true } : {})}
-                    onClick={() => runCycle("thursday_run", true)}
-                  >
-                    Preview only (no invoices created)
-                  </s-button>
-                  <s-button
-                    slot="primary-action"
-                    variant="primary"
-                    disabled={cycleBusy}
-                    {...(isBusy("thursday_run:run") ? { loading: true } : {})}
-                    onClick={() => runCycle("thursday_run", false)}
-                  >
-                    Run Thursday cycle now
-                  </s-button>
-                </s-button-group>
-              </s-stack>
+
+              <s-button-group gap="base" accessibilityLabel="Thursday cycle actions">
+                <s-button
+                  slot="secondary-actions"
+                  variant={
+                    isBusy("thursday_run:preview") ? "primary" : "secondary"
+                  }
+                  disabled={cycleBusy}
+                  {...(isBusy("thursday_run:preview") ? { loading: true } : {})}
+                  onClick={() => runCycle("thursday_run", true)}
+                >
+                  Preview only (no invoices created)
+                </s-button>
+                <s-button
+                  slot="primary-action"
+                  variant="primary"
+                  disabled={cycleBusy}
+                  {...(isBusy("thursday_run:run") ? { loading: true } : {})}
+                  onClick={() => runCycle("thursday_run", false)}
+                >
+                  Run Thursday cycle now
+                </s-button>
+              </s-button-group>
 
               {!data.thursdayTemplateConfigured && (
                 <s-banner
@@ -547,78 +551,78 @@
                   )}
                 </s-box>
               )}
-            </s-section>
-          )}
+            </s-stack>
+          </s-section>
+        )}
 
-          {tab === "alerts" && (
-            <s-section heading="New item after shipping paid" padding="base">
-              <s-paragraph>
-                Choose Ship now (handled manually) or Hold for next Thursday. Hold
-                adds the tag <s-text type="strong">hold-for-next-cycle</s-text>.
-              </s-paragraph>
-              {data.alerts.length === 0 ? (
-                <s-paragraph>No alerts right now.</s-paragraph>
-              ) : (
-                <s-stack direction="block" gap="base">
-                  {data.alerts.map((order) => (
-                    <ShippingPaidAlert
-                      key={order.id}
-                      order={order}
-                      busy={busyAction === `${order.id}:hold_for_next_cycle`}
-                      onHold={(orderId) =>
-                        runAction(orderId, "hold_for_next_cycle")
-                      }
-                    />
-                  ))}
-                </s-stack>
-              )}
-            </s-section>
-          )}
+        {tab === "alerts" && (
+          <s-section heading="New item after shipping paid" padding="base">
+            <s-paragraph>
+              Choose Ship now (handled manually) or Hold for next Thursday. Hold
+              adds the tag <s-text type="strong">hold-for-next-cycle</s-text>.
+            </s-paragraph>
+            {data.alerts.length === 0 ? (
+              <s-paragraph>No alerts right now.</s-paragraph>
+            ) : (
+              <s-stack direction="block" gap="base">
+                {data.alerts.map((order) => (
+                  <ShippingPaidAlert
+                    key={order.id}
+                    order={order}
+                    busy={busyAction === `${order.id}:hold_for_next_cycle`}
+                    onHold={(orderId) =>
+                      runAction(orderId, "hold_for_next_cycle")
+                    }
+                  />
+                ))}
+              </s-stack>
+            )}
+          </s-section>
+        )}
 
-          {tab === "friday" && (
-            <s-section heading="Friday reset" padding="base">
-              <s-paragraph>
-                On Friday midnight (CST), Shopify Flow removes{" "}
-                <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
-                <s-text type="strong">pushed-to-next-weekend</s-text>. The app then
-                cancels the old unpaid draft invoice.
-              </s-paragraph>
-              <s-paragraph>
-                Use the buttons below only as a manual backup if Flow did not run.
-              </s-paragraph>
-              <s-button-group gap="base" accessibilityLabel="Friday reset actions">
-                <s-button
-                  slot="secondary-actions"
-                  variant={isBusy("friday_run:preview") ? "primary" : "secondary"}
-                  disabled={cycleBusy}
-                  {...(isBusy("friday_run:preview") ? { loading: true } : {})}
-                  onClick={() => runCycle("friday_run", true)}
-                >
-                  Preview only (no changes)
-                </s-button>
-                <s-button
-                  slot="primary-action"
-                  variant="primary"
-                  tone="critical"
-                  disabled={cycleBusy}
-                  {...(isBusy("friday_run:run") ? { loading: true } : {})}
-                  onClick={() => runCycle("friday_run", false)}
-                >
-                  Run Friday backup now
-                </s-button>
-              </s-button-group>
-              {!data.cronConfigured && (
-                <s-banner heading="Scheduler settings incomplete" tone="info">
-                  <s-paragraph>
-                    Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
-                    <s-text type="strong">CRON_SHOP</s-text> for automated Thursday
-                    runs.
-                  </s-paragraph>
-                </s-banner>
-              )}
-            </s-section>
-          )}
-        </s-stack>
+        {tab === "friday" && (
+          <s-section heading="Friday reset" padding="base">
+            <s-paragraph>
+              On Friday midnight (CST), Shopify Flow removes{" "}
+              <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
+              <s-text type="strong">pushed-to-next-weekend</s-text>. The app then
+              cancels the old unpaid draft invoice.
+            </s-paragraph>
+            <s-paragraph>
+              Use the buttons below only as a manual backup if Flow did not run.
+            </s-paragraph>
+            <s-button-group gap="base" accessibilityLabel="Friday reset actions">
+              <s-button
+                slot="secondary-actions"
+                variant={isBusy("friday_run:preview") ? "primary" : "secondary"}
+                disabled={cycleBusy}
+                {...(isBusy("friday_run:preview") ? { loading: true } : {})}
+                onClick={() => runCycle("friday_run", true)}
+              >
+                Preview only (no changes)
+              </s-button>
+              <s-button
+                slot="primary-action"
+                variant="primary"
+                tone="critical"
+                disabled={cycleBusy}
+                {...(isBusy("friday_run:run") ? { loading: true } : {})}
+                onClick={() => runCycle("friday_run", false)}
+              >
+                Run Friday backup now
+              </s-button>
+            </s-button-group>
+            {!data.cronConfigured && (
+              <s-banner heading="Scheduler settings incomplete" tone="info">
+                <s-paragraph>
+                  Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
+                  <s-text type="strong">CRON_SHOP</s-text> for automated Thursday
+                  runs.
+                </s-paragraph>
+              </s-banner>
+            )}
+          </s-section>
+        )}
       </s-page>
     );
   }
