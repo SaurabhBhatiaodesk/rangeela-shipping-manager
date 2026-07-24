@@ -99,26 +99,56 @@ async function fetchOrdersByQuery(
 }
 
 /**
- * Preorders awaiting readiness: open orders not yet marked arrived / ready-to-ship.
+ * Preorders for the status UI: still awaiting readiness, plus recently completed
+ * (arrived / ready-to-ship) so the client can see checked steps.
  * Skirt deposits (group + partial) stay until deposit-fulfilled.
  */
 export async function fetchAwaitingReadinessOrders(
   admin: AdminGraphql,
 ): Promise<ShippingOrder[]> {
-  const query = [
+  const awaitingQuery = [
     "status:open",
     `-tag:${TAGS.READY_TO_SHIP}`,
     `-tag:${TAGS.ARRIVED_IN_CANADA}`,
     `-tag:${TAGS.DEPOSIT_FULFILLED}`,
   ].join(" AND ");
 
-  const orders = await fetchOrdersByQuery(admin, query, 100);
+  const completedQuery = [
+    "status:open",
+    `(tag:${TAGS.ARRIVED_IN_CANADA} OR tag:${TAGS.READY_TO_SHIP})`,
+  ].join(" AND ");
 
-  return orders.filter((order) => {
+  const [awaiting, completed] = await Promise.all([
+    fetchOrdersByQuery(admin, awaitingQuery, 100),
+    fetchOrdersByQuery(admin, completedQuery, 50),
+  ]);
+
+  const awaitingFiltered = awaiting.filter((order) => {
     if (order.isSkirtDeposit) return true;
-    // Exclude pure fulfilled noise; keep unfulfilled / partial for status flow
     const status = (order.displayFulfillmentStatus || "").toUpperCase();
     return status !== "FULFILLED";
+  });
+
+  const byId = new Map<string, ShippingOrder>();
+  for (const order of awaitingFiltered) {
+    byId.set(order.id, order);
+  }
+  for (const order of completed) {
+    if (!byId.has(order.id)) {
+      byId.set(order.id, order);
+    }
+  }
+
+  const isComplete = (order: ShippingOrder) =>
+    hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
+    hasTag(order.tags, TAGS.READY_TO_SHIP) ||
+    (order.isSkirtDeposit && hasTag(order.tags, TAGS.DEPOSIT_FULFILLED));
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const aDone = isComplete(a) ? 1 : 0;
+    const bDone = isComplete(b) ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    return b.createdAt.localeCompare(a.createdAt);
   });
 }
 

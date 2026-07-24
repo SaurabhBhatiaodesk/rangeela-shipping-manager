@@ -148,7 +148,7 @@ export async function runStatusEmailPoller(
           email: order.email,
           job: job.label,
           result: "skipped",
-          detail: `dry run → ${KLAVIYO_TEMPLATES[job.statusTag].templateId}`,
+          detail: `preview only — would send template ${KLAVIYO_TEMPLATES[job.statusTag].templateId}`,
         });
         continue;
       }
@@ -207,7 +207,15 @@ export async function runStatusEmailPoller(
     errors,
     rows,
     message: dryRun
-      ? `Dry run: checked ${checked} order(s)`
-      : `Status emails: sent ${sent}, skipped ${skipped}, errors ${errors}`,
+      ? `Preview: checked ${checked} order(s) — no emails were sent`
+      : errors > 0
+        ? `Status emails: sent ${sent}, skipped ${skipped}, failed ${errors}. ${
+            rows
+              .filter((r) => r.result === "error")
+              .map((r) => `${r.orderName} (${r.job}): ${r.detail}`)
+              .slice(0, 2)
+              .join(" | ")
+          }`
+        : `Status emails: sent ${sent}, skipped ${skipped}`,
   };
 }

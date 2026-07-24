@@ -27,23 +27,35 @@ export type StatusAction =
   | "deposit_fulfilled"
   | "hold_for_next_cycle";
 
+/**
+ * Klaviyo no longer supports POST /api/messages/send/ (returns 404).
+ * App creates a metric event; a Klaviyo Flow (triggered by that metric)
+ * sends the email that uses the template ID below.
+ */
 export const KLAVIYO_TEMPLATES = {
   [TAGS.PIECE_MADE]: {
     templateId: "WMcvs7",
+    metricName: "Rangeela Piece Made",
     subject: "The saree you chose is now your dress!",
     sentTag: TAGS.PIECE_MADE_EMAIL_SENT,
   },
   [TAGS.LEAVING_FOR_CANADA]: {
     templateId: "TB2w7d",
+    metricName: "Rangeela Leaving for Canada",
     subject: "Guess who's flying to Canada? Your Rangeelaa piece!",
     sentTag: TAGS.LEAVING_EMAIL_SENT,
   },
   [TAGS.ARRIVED_IN_CANADA]: {
     templateId: "XmXMMJ",
+    metricName: "Rangeela Arrived in Canada",
     subject: "Guess what just landed in Canada?",
     sentTag: TAGS.ARRIVED_EMAIL_SENT,
   },
 } as const;
+
+/** Metric that triggers the Thursday combined shipping invoice flow */
+export const KLAVIYO_THURSDAY_METRIC =
+  "Rangeela Thursday Shipping Invoice";
 
 export function hasTag(tags: string[], tag: string): boolean {
   return tags.some((t) => t.toLowerCase() === tag.toLowerCase());

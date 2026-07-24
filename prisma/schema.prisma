@@ -1,11 +1,13 @@
-// Prisma schema — PostgreSQL for Heroku + local Docker
+// Local / shopify app dev uses SQLite.
+// On Heroku: set provider to postgresql + DATABASE_URL from heroku-postgresql addon
+// (see docs/PHASE-0.md). Migration SQL for Postgres is under prisma/migrations/.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

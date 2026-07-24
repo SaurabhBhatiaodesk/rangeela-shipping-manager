@@ -82,14 +82,43 @@ When `pushed-to-next-weekend` is added, `orders/updated` deletes the draft store
 
 ---
 
+## Klaviyo setup (required — replaces dead `/api/messages/send/`)
+
+Klaviyo’s public API **cannot** send a template by ID directly. The app posts a
+**Create Event** (`POST /api/events/`). You must create a **metric-triggered Flow**
+for each email so Klaviyo actually sends it.
+
+Private API key needs scope **`events:write`**.
+
+| App metric name | Flow email template | Shopify trigger tag |
+|-----------------|---------------------|---------------------|
+| `Rangeela Piece Made` | `WMcvs7` | `piece-made-notified` |
+| `Rangeela Leaving for Canada` | `TB2w7d` | `leaving-for-canada-notified` |
+| `Rangeela Arrived in Canada` | `XmXMMJ` | `arrived-in-canada-notified` |
+| `Rangeela Thursday Shipping Invoice` | set `KLAVIYO_THURSDAY_TEMPLATE_ID` | Thursday cron |
+
+For each row:
+
+1. Klaviyo → **Flows** → Create flow → trigger **Metric** → pick the metric name  
+   (after the first successful app send, the metric appears; or create flow after a test event)  
+2. Add **Email** action → use the template ID above  
+3. Mark the flow email as **transactional** if you want it to bypass marketing consent  
+4. Set flow **Live**
+
+Thursday Flow properties available in the template: `invoice_url`, `wait_url`,
+`order_names`, `shipping_amount`.
+
+---
+
 ## Phase 1 — Manual webhook test
 
-1. Ensure `shopify app dev` is running (or production webhook registered)  
-2. Open a paid test order with a real/test customer email  
-3. Add tag `piece-made-notified` in Admin  
-4. Expect: Klaviyo template `WMcvs7` sent + tag `piece-made-email-sent`  
-5. Repeat with `leaving-for-canada-notified` → `TB2w7d` → `leaving-email-sent`  
-6. Repeat with `arrived-in-canada-notified` (+ `ready-to-ship`) → `XmXMMJ` → `arrived-email-sent`  
+1. Ensure the 3 status Flows above are **Live**  
+2. Ensure `shopify app dev` is running (or production webhook registered)  
+3. Open a paid test order with a **real** customer email (not `@example.com` — those events are dropped)  
+4. Add tag `piece-made-notified` in Admin  
+5. Expect: Klaviyo event + Flow email for `WMcvs7` + tag `piece-made-email-sent`  
+6. Repeat with `leaving-for-canada-notified` → `TB2w7d` → `leaving-email-sent`  
+7. Repeat with `arrived-in-canada-notified` (+ `ready-to-ship`) → `XmXMMJ` → `arrived-email-sent`  
 
 ---
 

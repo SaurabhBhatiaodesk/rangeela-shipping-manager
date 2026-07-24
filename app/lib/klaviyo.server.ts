@@ -1,4 +1,8 @@
-import { KLAVIYO_TEMPLATES, TAGS } from "./tags";
+import {
+  KLAVIYO_TEMPLATES,
+  KLAVIYO_THURSDAY_METRIC,
+  TAGS,
+} from "./tags";
 
 type KlaviyoTemplateKey =
   | typeof TAGS.PIECE_MADE
@@ -9,12 +13,17 @@ export type KlaviyoSendResult =
   | { ok: true; skipped?: boolean; reason?: string }
   | { ok: false; error: string };
 
-async function sendKlaviyoTemplate(options: {
+const KLAVIYO_REVISION = "2024-10-15";
+
+/**
+ * Creates a Klaviyo event. A metric-triggered Flow must send the email.
+ * Direct template send (/api/messages/send/) does not exist on current API.
+ */
+async function createKlaviyoEvent(options: {
   email: string;
-  templateId: string;
-  label: string;
-  /** Optional properties for template personalization (API-dependent). */
+  metricName: string;
   properties?: Record<string, string>;
+  uniqueId?: string;
 }): Promise<KlaviyoSendResult> {
   const apiKey = process.env.KLAVIYO_API_KEY;
   if (!apiKey) {
@@ -24,39 +33,44 @@ async function sendKlaviyoTemplate(options: {
     };
   }
 
-  const recipient: Record<string, unknown> = {
-    address: options.email,
+  const attributes: Record<string, unknown> = {
+    properties: options.properties ?? {},
+    metric: {
+      data: {
+        type: "metric",
+        attributes: { name: options.metricName },
+      },
+    },
+    profile: {
+      data: {
+        type: "profile",
+        attributes: { email: options.email },
+      },
+    },
   };
-  if (options.properties) {
-    recipient.properties = options.properties;
+
+  if (options.uniqueId) {
+    attributes.unique_id = options.uniqueId;
   }
 
-  const response = await fetch("https://a.klaviyo.com/api/messages/send/", {
+  const response = await fetch("https://a.klaviyo.com/api/events/", {
     method: "POST",
     headers: {
       Authorization: `Klaviyo-API-Key ${apiKey}`,
-      revision: "2023-12-15",
-      "Content-Type": "application/json",
-      Accept: "application/json",
+      revision: KLAVIYO_REVISION,
+      "Content-Type": "application/vnd.api+json",
+      Accept: "application/vnd.api+json",
     },
     body: JSON.stringify({
       data: {
-        type: "message-send-job",
-        attributes: {
-          message: {
-            channel: "email",
-            label: options.label,
-            recipients: [recipient],
-            content: {
-              template_id: options.templateId,
-            },
-          },
-        },
+        type: "event",
+        attributes,
       },
     }),
   });
 
-  if (!response.ok) {
+  // Create Event returns 202 Accepted on success
+  if (response.status !== 202 && !response.ok) {
     const body = await response.text();
     return {
       ok: false,
@@ -68,12 +82,13 @@ async function sendKlaviyoTemplate(options: {
 }
 
 /**
- * Sends a one-off Klaviyo email for a preorder status tag.
+ * Fires a preorder status metric so the matching Klaviyo Flow can email.
  */
 export async function sendPreorderStatusEmail(options: {
   email: string | null | undefined;
   statusTag: KlaviyoTemplateKey;
   alreadySent: boolean;
+  uniqueId?: string;
 }): Promise<KlaviyoSendResult> {
   const { email, statusTag, alreadySent } = options;
 
@@ -90,16 +105,21 @@ export async function sendPreorderStatusEmail(options: {
     return { ok: false, error: `Unknown status tag: ${statusTag}` };
   }
 
-  return sendKlaviyoTemplate({
+  return createKlaviyoEvent({
     email,
-    templateId: template.templateId,
-    label: "Preorder status update",
+    metricName: template.metricName,
+    uniqueId: options.uniqueId,
+    properties: {
+      status_tag: statusTag,
+      template_id: template.templateId,
+      subject: template.subject,
+    },
   });
 }
 
 /**
- * Thursday combined shipping invoice email (invoice URL + wait URL).
- * Template ID: KLAVIYO_THURSDAY_TEMPLATE_ID
+ * Thursday combined shipping invoice — triggers metric
+ * `Rangeela Thursday Shipping Invoice` (Flow uses template from env/docs).
  */
 export async function sendThursdayInvoiceEmail(options: {
   email: string;
@@ -107,6 +127,7 @@ export async function sendThursdayInvoiceEmail(options: {
   waitUrl: string;
   orderNames: string[];
   shippingAmount: string;
+  uniqueId?: string;
 }): Promise<KlaviyoSendResult> {
   const templateId = process.env.KLAVIYO_THURSDAY_TEMPLATE_ID;
   if (!templateId) {
@@ -121,11 +142,12 @@ export async function sendThursdayInvoiceEmail(options: {
     return { ok: false, error: "Draft order has no invoiceUrl" };
   }
 
-  return sendKlaviyoTemplate({
+  return createKlaviyoEvent({
     email: options.email,
-    templateId,
-    label: "Thursday shipping invoice",
+    metricName: KLAVIYO_THURSDAY_METRIC,
+    uniqueId: options.uniqueId,
     properties: {
+      template_id: templateId,
       invoice_url: options.invoiceUrl,
       wait_url: options.waitUrl,
       order_names: options.orderNames.join(", "),

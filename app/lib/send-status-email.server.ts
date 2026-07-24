@@ -56,6 +56,7 @@ export async function sendStatusEmailIfNeeded(
     email,
     statusTag,
     alreadySent: false,
+    uniqueId: `${orderId}:${statusTag}`,
   });
 
   if (!emailResult.ok) {

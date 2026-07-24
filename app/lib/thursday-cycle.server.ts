@@ -442,6 +442,7 @@ export async function runThursdayCycle(
         waitUrl,
         orderNames,
         shippingAmount: row.shippingAmount,
+        uniqueId: `thursday:${draft.id}`,
       });
 
       // Draft + tags always apply; email failure is reported but does not block tags
