@@ -109,7 +109,6 @@ import { useEffect, useState, startTransition } from "react";
     const { admin, session } = await authenticate.admin(request);
     const formData = await request.formData();
     const intent = String(formData.get("intent") || "status");
-
     const actionLog: Record<string, unknown> = {
       intent,
       shop: session.shop,
