@@ -216,6 +216,7 @@ import { useEffect, useState, startTransition } from "react";
 
     const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
     const cycleBusy = fetcher.state !== "idle";
+    const [manualTestOpen, setManualTestOpen] = useState(false);
 
     useEffect(() => {
       if (fetcher.state !== "idle") return;
@@ -623,6 +624,102 @@ import { useEffect, useState, startTransition } from "react";
                 customer into one draft shipping invoice. Excludes Saskatoon and
                 India-only / mixed India orders.
               </s-paragraph>
+
+              <s-box
+                background={manualTestOpen ? "subdued" : "base"}
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor={manualTestOpen ? "strong" : "subdued"}
+                borderRadius="large"
+                padding="none"
+                overflow="hidden"
+              >
+                <s-clickable
+                  padding="base"
+                  inlineSize="100%"
+                  background={manualTestOpen ? "subdued" : "transparent"}
+                  accessibilityLabel={`${manualTestOpen ? "Collapse" : "Expand"} Manual Test — Thursday Shipping Invoice`}
+                  onClick={() => setManualTestOpen(!manualTestOpen)}
+                >
+                  <s-stack
+                    direction="inline"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    gap="base"
+                    inlineSize="100%"
+                  >
+                    <s-stack direction="inline" alignItems="center" gap="small-200">
+                      <s-badge tone={manualTestOpen ? "info" : "neutral"} color={manualTestOpen ? "strong" : "base"}>
+                        TEST
+                      </s-badge>
+                      <s-text type="strong">Manual Test — Thursday Shipping Invoice</s-text>
+                    </s-stack>
+                    <s-icon type={manualTestOpen ? "caret-up" : "caret-down"} />
+                  </s-stack>
+                </s-clickable>
+
+                {manualTestOpen ? (
+                  <>
+                    <s-divider color="strong" />
+                    <s-box background="base" padding="base">
+                      <s-stack gap="small-200">
+                        <s-unordered-list>
+                          <s-list-item>Create a fresh normal Shopify order.</s-list-item>
+                          <s-list-item>
+                            Use customer email: <s-text type="strong">test@gmail.com</s-text>
+                          </s-list-item>
+                          <s-list-item>Use a Canadian shipping address (not Saskatoon).</s-list-item>
+                          <s-list-item>Keep the order Paid and Unfulfilled.</s-list-item>
+                          <s-list-item>For isolated testing, add these Shopify tags:</s-list-item>
+                          <s-list-item>
+                            <s-unordered-list>
+                              <s-list-item>arrived-in-canada-notified</s-list-item>
+                              <s-list-item>ready-to-ship</s-list-item>
+                            </s-unordered-list>
+                          </s-list-item>
+                          <s-list-item>Do NOT add: thursday-email-sent, shipping-paid, pushed-to-next-weekend, hold-for-next-cycle</s-list-item>
+                          <s-list-item>Open: Shipping Manager → 03. Thursday invoice</s-list-item>
+                          <s-list-item>Click: Preview only (no invoices created)</s-list-item>
+                          <s-list-item>
+                            Confirm Preview shows: 1 customer, customer email, order number, item count, shipping amount
+                          </s-list-item>
+                          <s-list-item>If Preview shows 1 customer, click: Run Thursday cycle now</s-list-item>
+                        </s-unordered-list>
+
+                        <s-heading>Expected Result</s-heading>
+                        <s-unordered-list>
+                          <s-list-item>A new Shopify Draft Order is created.</s-list-item>
+                          <s-list-item>The draft invoice amount is 15.00 CAD for this test case.</s-list-item>
+                          <s-list-item>The customer receives the Klaviyo Thursday shipping invoice email.</s-list-item>
+                          <s-list-item>The original order receives the tag: <s-text type="strong">thursday-email-sent</s-text>.</s-list-item>
+                          <s-list-item>The email displays: customer name, item count, shipping total, working Pay Shipping button, working invoice URL.</s-list-item>
+                        </s-unordered-list>
+
+                        <s-banner tone="warning" heading="Warning">
+                          <s-paragraph>
+                            Use these manual tags only for isolated testing. In the real workflow, status and readiness tags should normally come from the app buttons or the configured automation.
+                          </s-paragraph>
+                        </s-banner>
+
+                        <s-banner tone="info" heading="Troubleshooting">
+                          <s-paragraph>
+                            If Preview shows 0 customers, check:
+                          </s-paragraph>
+                          <s-unordered-list>
+                            <s-list-item>order is a normal order, not a draft;</s-list-item>
+                            <s-list-item>order is Paid;</s-list-item>
+                            <s-list-item>order is Unfulfilled;</s-list-item>
+                            <s-list-item>shipping country is Canada;</s-list-item>
+                            <s-list-item>city is not Saskatoon;</s-list-item>
+                            <s-list-item>required tags are present;</s-list-item>
+                            <s-list-item>thursday-email-sent is not already present.</s-list-item>
+                          </s-unordered-list>
+                        </s-banner>
+                      </s-stack>
+                    </s-box>
+                  </>
+                ) : null}
+              </s-box>
 
               <s-button-group gap="base" accessibilityLabel="Thursday cycle actions">
                 <s-button
