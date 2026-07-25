@@ -204,6 +204,7 @@ export type ThursdayCycleResult = {
   dryRun: boolean;
   customersProcessed: number;
   results: ThursdayCustomerResult[];
+  error?: string;
   message: string;
 };
 
@@ -212,6 +213,7 @@ async function addTags(
   id: string,
   tags: string[],
 ) {
+  console.log("Thursday cycle addTags request", { id, tags });
   const json = await graphqlJson(
     admin,
     `#graphql
@@ -224,8 +226,11 @@ async function addTags(
   );
   const errors = json.data?.tagsAdd?.userErrors ?? [];
   if (errors.length) {
-    throw new Error(errors.map((e: { message: string }) => e.message).join(", "));
+    const message = errors.map((e: { message: string }) => e.message).join(", ");
+    console.error("Thursday cycle addTags failed", { id, tags, message });
+    throw new Error(message);
   }
+  console.log("Thursday cycle addTags succeeded", { id, tags });
 }
 
 async function removeTags(
@@ -287,12 +292,14 @@ async function attachLinkedOrderIdsToDraft(
 ) {
   if (!linkedOrderIds.length) return;
 
+  const note = JSON.stringify({ linked_order_ids: linkedOrderIds });
+
   await graphqlJson(
     admin,
     `#graphql
       mutation AttachLinkedOrderIdsToDraft($input: DraftOrderInput!) {
         draftOrderUpdate(input: $input) {
-          draftOrder { id noteAttributes { name value } }
+          draftOrder { id note }
           userErrors { field message }
         }
       }
@@ -300,18 +307,13 @@ async function attachLinkedOrderIdsToDraft(
     {
       input: {
         id: draftOrderId,
-        noteAttributes: [
-          {
-            name: "linked_order_ids",
-            value: serializeLinkedOrderIds(linkedOrderIds),
-          },
-        ],
+        note,
       },
     },
   );
 
   console.log(
-    "Thursday draft invoice linked_order_ids attached:",
+    "Thursday draft invoice linked_order_ids note attached:",
     draftOrderId,
     linkedOrderIds,
   );
@@ -328,20 +330,19 @@ async function createShippingDraft(
   const primary = orders[0]!;
   const address = primary.shippingAddress;
 
+  const draftNote = JSON.stringify({
+    linked_order_ids: linkedOrderIds,
+    combined_orders: orders.map((o) => o.name),
+  });
+
   const input: Record<string, unknown> = {
     email,
-    note,
+    note: draftNote,
     tags: ["rangeela-thursday-shipping", "shipping-invoice"],
     customAttributes: [
       {
         key: "source_order_ids",
         value: orders.map((o) => o.id).join(","),
-      },
-    ],
-    noteAttributes: [
-      {
-        name: "linked_order_ids",
-        value: serializeLinkedOrderIds(linkedOrderIds),
       },
     ],
     lineItems: [
@@ -372,6 +373,15 @@ async function createShippingDraft(
     };
   }
 
+  console.log("Thursday createShippingDraft input", {
+    email,
+    amount,
+    linkedOrderIds,
+    customerId: input.customerId,
+    hasShippingAddress: Boolean(input.shippingAddress),
+    lineItems: input.lineItems,
+  });
+
   const json = await graphqlJson(
     admin,
     `#graphql
@@ -388,12 +398,17 @@ async function createShippingDraft(
     { input },
   );
 
+  console.log("Thursday draftOrderCreate response", {
+    data: json.data,
+    errors: json.errors,
+  });
+
   const payload = json.data?.draftOrderCreate;
   const userErrors = payload?.userErrors ?? [];
   if (userErrors.length) {
-    throw new Error(
-      userErrors.map((e: { message: string }) => e.message).join(", "),
-    );
+    const message = userErrors.map((e: { message: string }) => e.message).join(", ");
+    console.error("Thursday draftOrderCreate userErrors", { message, userErrors });
+    throw new Error(message);
   }
 
   const draft = payload.draftOrder;
@@ -455,6 +470,13 @@ export async function runThursdayCycle(
     byEmail.set(key, list);
   }
 
+  console.log("Thursday cycle candidate summary", {
+    pool1: pool1.length,
+    pool2: pool2.length,
+    combinedCustomers: byEmail.size,
+    totalOrders: byId.size,
+  });
+
   const results: ThursdayCustomerResult[] = [];
 
   for (const [email, orders] of byEmail) {
@@ -479,6 +501,14 @@ export async function runThursdayCycle(
     }
 
     try {
+      console.log("Thursday cycle processing customer", {
+        email,
+        orderIds: orders.map((o) => o.id),
+        orderNames,
+        itemCount,
+        shippingAmount,
+      });
+
       const draft = await createShippingDraft(
         admin,
         orders,
@@ -486,6 +516,12 @@ export async function runThursdayCycle(
         shippingAmount,
         orders.map((o) => o.id),
       );
+      console.log("Thursday createShippingDraft succeeded", {
+        email,
+        draftId: draft.id,
+        invoiceUrl: draft.invoiceUrl,
+        draftName: draft.name,
+      });
       row.draftOrderId = draft.id;
       row.invoiceUrl = draft.invoiceUrl || undefined;
 
@@ -493,6 +529,14 @@ export async function runThursdayCycle(
         process.env.THURSDAY_WAIT_URL ||
         process.env.SHOPIFY_APP_URL ||
         "";
+
+      console.log("Thursday sending invoice email", {
+        email,
+        invoiceUrl: draft.invoiceUrl,
+        waitUrl,
+        templateId: thursdayTemplateId,
+        uniqueId: `thursday:${draft.id}`,
+      });
 
       const emailResult = await sendThursdayInvoiceEmail({
         email,
@@ -504,12 +548,24 @@ export async function runThursdayCycle(
         templateId: thursdayTemplateId,
       });
 
-      // Draft + tags always apply; email failure is reported but does not block tags
+      console.log("Thursday sendThursdayInvoiceEmail result", {
+        emailResult,
+        email,
+        draftId: draft.id,
+      });
+
       if (emailResult.ok && !emailResult.skipped) {
         row.emailSent = true;
-      } else if (!emailResult.ok) {
-        row.error = `Invoice created; email pending: ${emailResult.error}`;
+      } else {
+        const emailError =
+          !emailResult.ok && "error" in emailResult
+            ? emailResult.error
+            : undefined;
+        row.error = emailError
+          ? `Invoice created; email pending: ${emailError}`
+          : "Invoice created; email not sent.";
         row.emailSent = false;
+        continue;
       }
 
       for (const order of orders) {
@@ -528,17 +584,29 @@ export async function runThursdayCycle(
         }
       }
     } catch (error) {
-      row.error = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Thursday cycle error", {
+        email,
+        orderIds: orders.map((o) => o.id),
+        error: message,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      row.error = message;
     }
 
     results.push(row);
   }
 
+  const rowErrors = results
+    .map((r) => r.error)
+    .filter(Boolean) as string[];
+
   return {
-    ok: results.every((r) => !r.error),
+    ok: rowErrors.length === 0,
     dryRun,
     customersProcessed: results.length,
     results,
+    error: rowErrors.length > 0 ? rowErrors.join("; ") : undefined,
     message: dryRun
       ? `Dry run: ${results.length} customer invoice(s) would be created`
       : `Thursday cycle finished: ${results.length} customer invoice(s)`,

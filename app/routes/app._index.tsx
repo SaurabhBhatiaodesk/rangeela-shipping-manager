@@ -110,8 +110,19 @@ import { useEffect, useState, startTransition } from "react";
     const formData = await request.formData();
     const intent = String(formData.get("intent") || "status");
 
+    const actionLog: Record<string, unknown> = {
+      intent,
+      shop: session.shop,
+      formKeys: Array.from(formData.keys()),
+    };
+    if (typeof session === "object" && session !== null && "user" in session) {
+      actionLog.userId = (session as any).user?.id;
+    }
+    console.log("App action received", actionLog);
+
     if (intent === "thursday_run") {
       const dryRun = formData.get("dryRun") === "1";
+      console.log("Thursday cycle action start", { dryRun, shop: session.shop });
       return runThursdayCycle(admin, { dryRun, shop: session.shop });
     }
 
@@ -233,6 +244,14 @@ import { useEffect, useState, startTransition } from "react";
         );
       } else if ("error" in fetcher.data && fetcher.data.error) {
         shopify.toast.show(String(fetcher.data.error), { isError: true });
+      } else if ("ok" in fetcher.data && fetcher.data.ok === false) {
+        const rowError = Array.isArray((fetcher.data as any).results)
+          ? (fetcher.data as any).results.find((r: any) => r?.error)?.error
+          : undefined;
+        shopify.toast.show(
+          String(rowError ?? "Thursday cycle failed. Check details."),
+          { isError: true },
+        );
       }
     }, [fetcher.state, fetcher.data, shopify]);
 

@@ -52,6 +52,8 @@ async function createKlaviyoEvent(options: {
     attributes.unique_id = options.uniqueId;
   }
 
+  console.log("Klaviyo create event", { email: options.email, metricName: options.metricName, uniqueId: options.uniqueId, properties: options.properties });
+
   const response = await fetch("https://a.klaviyo.com/api/events/", {
     method: "POST",
     headers: {
@@ -70,12 +72,14 @@ async function createKlaviyoEvent(options: {
 
   if (response.status !== 202 && !response.ok) {
     const body = await response.text();
+    console.error("Klaviyo create event failed", { status: response.status, body: body.slice(0, 300) });
     return {
       ok: false,
       error: `Klaviyo ${response.status}: ${body.slice(0, 300)}`,
     };
   }
 
+  console.log("Klaviyo create event succeeded", { status: response.status });
   return { ok: true };
 }
 
