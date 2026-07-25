@@ -26,17 +26,10 @@ import { useEffect, useState, startTransition } from "react";
   import { authenticate } from "../shopify.server";
   import {
     getShopSettings,
-    saveShopSettings,
   } from "../lib/klaviyo-settings.server";
   import { KLAVIYO_STATUS_EMAIL_META } from "../lib/tags";
 
-  type TabId =
-    | "preorders"
-    | "emails"
-    | "thursday"
-    | "alerts"
-    | "friday"
-    | "settings";
+  type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
 
   export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin, session } = await authenticate.admin(request);
@@ -77,7 +70,7 @@ import { useEffect, useState, startTransition } from "react";
         };
       }
 
-      if (tab === "friday" || tab === "emails" || tab === "settings") {
+      if (tab === "friday" || tab === "emails") {
         return {
           ...base,
           tab,
@@ -116,51 +109,6 @@ import { useEffect, useState, startTransition } from "react";
     const { admin, session } = await authenticate.admin(request);
     const formData = await request.formData();
     const intent = String(formData.get("intent") || "status");
-
-    if (
-      intent === "save_shop_settings" ||
-      intent === "save_klaviyo_templates"
-    ) {
-      await saveShopSettings(session.shop, {
-        pieceMadeTemplateId: String(
-          formData.get("pieceMadeTemplateId") || "",
-        ),
-        leavingForCanadaTemplateId: String(
-          formData.get("leavingForCanadaTemplateId") || "",
-        ),
-        arrivedInCanadaTemplateId: String(
-          formData.get("arrivedInCanadaTemplateId") || "",
-        ),
-        thursdayTemplateId: String(formData.get("thursdayTemplateId") || ""),
-        pieceMade: String(formData.get("pieceMade") || ""),
-        leavingForCanada: String(formData.get("leavingForCanada") || ""),
-        arrivedInCanada: String(formData.get("arrivedInCanada") || ""),
-        depositFulfilled: String(formData.get("depositFulfilled") || ""),
-        depositFulfilledDone: String(
-          formData.get("depositFulfilledDone") || "",
-        ),
-        pieceMadeTag: String(formData.get("pieceMadeTag") || ""),
-        leavingForCanadaTag: String(formData.get("leavingForCanadaTag") || ""),
-        arrivedInCanadaTag: String(formData.get("arrivedInCanadaTag") || ""),
-        pieceMadeEmailSentTag: String(
-          formData.get("pieceMadeEmailSentTag") || "",
-        ),
-        leavingEmailSentTag: String(
-          formData.get("leavingEmailSentTag") || "",
-        ),
-        arrivedEmailSentTag: String(
-          formData.get("arrivedEmailSentTag") || "",
-        ),
-      });
-      const shopSettings = await getShopSettings(session.shop);
-      return {
-        ok: true as const,
-        message: "Settings saved",
-        klaviyoTemplates: shopSettings.klaviyoTemplates,
-        preorderLabels: shopSettings.preorderLabels,
-        preorderTags: shopSettings.preorderTags,
-      };
-    }
 
     if (intent === "thursday_run") {
       const dryRun = formData.get("dryRun") === "1";
@@ -259,40 +207,11 @@ import { useEffect, useState, startTransition } from "react";
     const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
     const cycleBusy = fetcher.state !== "idle";
 
-    const [settingsForm, setSettingsForm] = useState({
-      ...data.klaviyoTemplates,
-      ...data.preorderLabels,
-      ...data.preorderTags,
-    });
-
-    useEffect(() => {
-      setSettingsForm({
-        ...data.klaviyoTemplates,
-        ...data.preorderLabels,
-        ...data.preorderTags,
-      });
-    }, [data.klaviyoTemplates, data.preorderLabels, data.preorderTags]);
-
     useEffect(() => {
       if (fetcher.state !== "idle") return;
       setBusyAction(null);
 
       if (!fetcher.data) return;
-
-      if (
-        "klaviyoTemplates" in fetcher.data &&
-        fetcher.data.klaviyoTemplates &&
-        "preorderLabels" in fetcher.data &&
-        fetcher.data.preorderLabels &&
-        "preorderTags" in fetcher.data &&
-        fetcher.data.preorderTags
-      ) {
-        setSettingsForm({
-          ...fetcher.data.klaviyoTemplates,
-          ...fetcher.data.preorderLabels,
-          ...fetcher.data.preorderTags,
-        });
-      }
 
       if ("rows" in fetcher.data && Array.isArray(fetcher.data.rows)) {
         setLastEmailRun({ rows: fetcher.data.rows });
@@ -341,31 +260,6 @@ import { useEffect, useState, startTransition } from "react";
       setBusyAction(`${intent}:${dryRun ? "preview" : "run"}`);
       fetcher.submit(
         { intent, dryRun: dryRun ? "1" : "0" },
-        { method: "POST" },
-      );
-    };
-
-    const saveShopSettingsForm = () => {
-      setBusyAction("save_shop_settings");
-      fetcher.submit(
-        {
-          intent: "save_shop_settings",
-          pieceMadeTemplateId: settingsForm.pieceMadeTemplateId,
-          leavingForCanadaTemplateId: settingsForm.leavingForCanadaTemplateId,
-          arrivedInCanadaTemplateId: settingsForm.arrivedInCanadaTemplateId,
-          thursdayTemplateId: settingsForm.thursdayTemplateId,
-          pieceMade: settingsForm.pieceMade,
-          leavingForCanada: settingsForm.leavingForCanada,
-          arrivedInCanada: settingsForm.arrivedInCanada,
-          depositFulfilled: settingsForm.depositFulfilled,
-          depositFulfilledDone: settingsForm.depositFulfilledDone,
-          pieceMadeTag: settingsForm.pieceMadeTag,
-          leavingForCanadaTag: settingsForm.leavingForCanadaTag,
-          arrivedInCanadaTag: settingsForm.arrivedInCanadaTag,
-          pieceMadeEmailSentTag: settingsForm.pieceMadeEmailSentTag,
-          leavingEmailSentTag: settingsForm.leavingEmailSentTag,
-          arrivedEmailSentTag: settingsForm.arrivedEmailSentTag,
-        },
         { method: "POST" },
       );
     };
@@ -423,12 +317,14 @@ import { useEffect, useState, startTransition } from "react";
               label="Friday reset"
               onClick={() => setTab("friday")}
             />
-            <TabButton
-              active={tab === "settings"}
-              number="06"
-              label="Settings"
-              onClick={() => setTab("settings")}
-            />
+            <s-link href="/app/settings">
+              <s-button
+                variant="secondary"
+                accessibilityLabel="06. Settings"
+              >
+                06. Settings
+              </s-button>
+            </s-link>
           </s-stack>
         </s-section>
 
@@ -442,9 +338,11 @@ import { useEffect, useState, startTransition } from "react";
                 green success badges. Skirt deposits use{" "}
                 {data.preorderLabels.depositFulfilled}.
               </s-paragraph>
-              <s-button variant="secondary" onClick={() => setTab("settings")}>
-                Edit button labels &amp; order tags
-              </s-button>
+              <s-link href="/app/settings">
+                <s-button variant="secondary">
+                  Edit button labels &amp; order tags
+                </s-button>
+              </s-link>
             </s-banner>
             {data.preorders.length === 0 ? (
               <s-banner heading="No preorders yet" tone="warning">
@@ -609,14 +507,14 @@ import { useEffect, useState, startTransition } from "react";
                 </s-unordered-list>
               </s-stack>
 
-              <s-banner heading="Template IDs, labels &amp; tags" tone="info">
+              <s-banner heading="Tags, labels &amp; templates" tone="info">
                 <s-paragraph>
                   Configure Shopify order tags, button labels, and Klaviyo
-                  template IDs in the Settings tab.
+                  template IDs on the Settings page.
                 </s-paragraph>
-                <s-button variant="secondary" onClick={() => setTab("settings")}>
-                  Open Settings
-                </s-button>
+                <s-link href="/app/settings">
+                  <s-button variant="secondary">Open Settings</s-button>
+                </s-link>
               </s-banner>
 
               <s-banner
@@ -742,7 +640,7 @@ import { useEffect, useState, startTransition } from "react";
                   tone="warning"
                 >
                   <s-paragraph>
-                    Open the Settings tab and set the Thursday shipping invoice
+                    Open Settings and set the Thursday shipping invoice
                     template ID, then save. Preview and draft orders still work;
                     invoice emails send after the ID is set.
                   </s-paragraph>
@@ -804,200 +702,6 @@ import { useEffect, useState, startTransition } from "react";
                 ))}
               </s-stack>
             )}
-          </s-section>
-        )}
-
-        {tab === "settings" && (
-          <s-section heading="Settings" padding="base">
-            <s-stack direction="block" gap="large">
-              <s-section heading="Shopify order tags" padding="base">
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    Tags added to orders when you click each button on the
-                    Preorders tab. Leave blank to use defaults (e.g.{" "}
-                    <s-text type="strong">piece-made-notified</s-text>).
-                  </s-paragraph>
-                  <s-text-field
-                    label="Piece Made status tag"
-                    value={settingsForm.pieceMadeTag}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        pieceMadeTag: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Leaving for Canada status tag"
-                    value={settingsForm.leavingForCanadaTag}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        leavingForCanadaTag: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Arrived in Canada status tag"
-                    value={settingsForm.arrivedInCanadaTag}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        arrivedInCanadaTag: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Piece Made email-sent tag"
-                    value={settingsForm.pieceMadeEmailSentTag}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        pieceMadeEmailSentTag: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Leaving email-sent tag"
-                    value={settingsForm.leavingEmailSentTag}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        leavingEmailSentTag: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Arrived email-sent tag"
-                    value={settingsForm.arrivedEmailSentTag}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        arrivedEmailSentTag: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                </s-stack>
-              </s-section>
-
-              <s-section heading="Preorder workflow labels" padding="base">
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    Button and badge text on the Preorders tab. Leave blank to
-                    use the built-in defaults.
-                  </s-paragraph>
-                  <s-text-field
-                    label="Piece Made button / badge"
-                    value={settingsForm.pieceMade}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        pieceMade: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Leaving for Canada button / badge"
-                    value={settingsForm.leavingForCanada}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        leavingForCanada: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Arrived in Canada button / badge"
-                    value={settingsForm.arrivedInCanada}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        arrivedInCanada: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Skirt deposit button"
-                    value={settingsForm.depositFulfilled}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        depositFulfilled: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Skirt deposit completed badge"
-                    value={settingsForm.depositFulfilledDone}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        depositFulfilledDone: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                </s-stack>
-              </s-section>
-
-              <s-section heading="Klaviyo template IDs" padding="base">
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    Short ID from the Klaviyo template URL. Saved per shop and
-                    sent on each Klaviyo event (Flows should use the same
-                    templates).
-                  </s-paragraph>
-                  <s-text-field
-                    label="Piece Made template ID"
-                    value={settingsForm.pieceMadeTemplateId}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        pieceMadeTemplateId: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Leaving for Canada template ID"
-                    value={settingsForm.leavingForCanadaTemplateId}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        leavingForCanadaTemplateId: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Arrived in Canada template ID"
-                    value={settingsForm.arrivedInCanadaTemplateId}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        arrivedInCanadaTemplateId: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                  <s-text-field
-                    label="Thursday shipping invoice template ID"
-                    value={settingsForm.thursdayTemplateId}
-                    onChange={(e) =>
-                      setSettingsForm((prev) => ({
-                        ...prev,
-                        thursdayTemplateId: e.currentTarget.value,
-                      }))
-                    }
-                  />
-                </s-stack>
-              </s-section>
-
-              <s-button
-                variant="primary"
-                disabled={cycleBusy}
-                {...(isBusy("save_shop_settings") ? { loading: true } : {})}
-                onClick={saveShopSettingsForm}
-              >
-                Save settings
-              </s-button>
-            </s-stack>
           </s-section>
         )}
 

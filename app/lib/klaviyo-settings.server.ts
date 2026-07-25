@@ -220,6 +220,42 @@ export async function saveShopSettings(
   });
 }
 
+export function flattenShopSettings(
+  settings: ShopAppSettings,
+): ShopSettingsInput {
+  return {
+    ...settings.klaviyoTemplates,
+    ...settings.preorderLabels,
+    ...settings.preorderTags,
+  };
+}
+
+export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
+  return {
+    pieceMadeTemplateId: String(formData.get("pieceMadeTemplateId") ?? ""),
+    leavingForCanadaTemplateId: String(
+      formData.get("leavingForCanadaTemplateId") ?? "",
+    ),
+    arrivedInCanadaTemplateId: String(
+      formData.get("arrivedInCanadaTemplateId") ?? "",
+    ),
+    thursdayTemplateId: String(formData.get("thursdayTemplateId") ?? ""),
+    pieceMade: String(formData.get("pieceMade") ?? ""),
+    leavingForCanada: String(formData.get("leavingForCanada") ?? ""),
+    arrivedInCanada: String(formData.get("arrivedInCanada") ?? ""),
+    depositFulfilled: String(formData.get("depositFulfilled") ?? ""),
+    depositFulfilledDone: String(formData.get("depositFulfilledDone") ?? ""),
+    pieceMadeTag: String(formData.get("pieceMadeTag") ?? ""),
+    leavingForCanadaTag: String(formData.get("leavingForCanadaTag") ?? ""),
+    arrivedInCanadaTag: String(formData.get("arrivedInCanadaTag") ?? ""),
+    pieceMadeEmailSentTag: String(
+      formData.get("pieceMadeEmailSentTag") ?? "",
+    ),
+    leavingEmailSentTag: String(formData.get("leavingEmailSentTag") ?? ""),
+    arrivedEmailSentTag: String(formData.get("arrivedEmailSentTag") ?? ""),
+  };
+}
+
 export function statusTagForAction(
   tags: PreorderWorkflowTags,
   action: StatusEmailAction,
