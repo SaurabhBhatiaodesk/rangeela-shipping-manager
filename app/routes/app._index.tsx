@@ -278,10 +278,13 @@ import { useEffect, useState, startTransition } from "react";
           </s-banner>
         )}
 
-        <s-banner heading="Workflow steps" tone="success">
+        <s-banner heading="Shipping workflow" tone="info">
           <s-paragraph>
-            Choose a step below. The selected step uses the Polaris primary
-            button color.
+            Manage preorders, status emails, Thursday invoices, shipping-paid
+            alerts, and Friday reset. Use the steps below in order — when you
+            mark a preorder step, the matching Shopify tag is added and Klaviyo
+            sends the customer email. Tags, button labels, and template IDs are
+            configured in <s-link href="/app/settings">Settings</s-link>.
           </s-paragraph>
         </s-banner>
 
@@ -317,14 +320,6 @@ import { useEffect, useState, startTransition } from "react";
               label="Friday reset"
               onClick={() => setTab("friday")}
             />
-            <s-link href="/app/settings">
-              <s-button
-                variant="secondary"
-                accessibilityLabel="06. Settings"
-              >
-                06. Settings
-              </s-button>
-            </s-link>
           </s-stack>
         </s-section>
 
