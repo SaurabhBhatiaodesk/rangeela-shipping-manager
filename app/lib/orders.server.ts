@@ -5,6 +5,10 @@ import {
   TAGS,
   type StatusAction,
 } from "./tags";
+import type {
+  PreorderWorkflowLabels,
+  PreorderWorkflowTags,
+} from "./klaviyo-settings.server";
 
 export type ShippingOrder = {
   id: string;
@@ -105,17 +109,18 @@ async function fetchOrdersByQuery(
  */
 export async function fetchAwaitingReadinessOrders(
   admin: AdminGraphql,
+  workflowTags: PreorderWorkflowTags,
 ): Promise<ShippingOrder[]> {
   const awaitingQuery = [
     "status:open",
     `-tag:${TAGS.READY_TO_SHIP}`,
-    `-tag:${TAGS.ARRIVED_IN_CANADA}`,
+    `-tag:${workflowTags.arrivedInCanadaTag}`,
     `-tag:${TAGS.DEPOSIT_FULFILLED}`,
   ].join(" AND ");
 
   const completedQuery = [
     "status:open",
-    `(tag:${TAGS.ARRIVED_IN_CANADA} OR tag:${TAGS.READY_TO_SHIP})`,
+    `(tag:${workflowTags.arrivedInCanadaTag} OR tag:${TAGS.READY_TO_SHIP})`,
   ].join(" AND ");
 
   const [awaiting, completed] = await Promise.all([
@@ -140,7 +145,7 @@ export async function fetchAwaitingReadinessOrders(
   }
 
   const isComplete = (order: ShippingOrder) =>
-    hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
+    hasTag(order.tags, workflowTags.arrivedInCanadaTag) ||
     hasTag(order.tags, TAGS.READY_TO_SHIP) ||
     (order.isSkirtDeposit && hasTag(order.tags, TAGS.DEPOSIT_FULFILLED));
 
@@ -272,7 +277,12 @@ export async function applyStatusAction(
   admin: AdminGraphql,
   orderId: string,
   action: StatusAction,
+  options: {
+    workflowTags: PreorderWorkflowTags;
+    labels: PreorderWorkflowLabels;
+  },
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  const { workflowTags, labels } = options;
   const snapshot = await getOrderSnapshot(admin, orderId);
   if (!snapshot) {
     return { ok: false, error: "Order not found" };
@@ -296,51 +306,57 @@ export async function applyStatusAction(
   }
 
   if (action === "piece_made") {
-    if (hasTag(tags, TAGS.PIECE_MADE)) {
-      return { ok: false, error: "Piece Made already marked" };
-    }
-    const tagResult = await addOrderTags(admin, orderId, [TAGS.PIECE_MADE]);
-    if (!tagResult.ok) return tagResult;
-    return {
-      ok: true,
-      message: "Piece Made tagged (Klaviyo email via orders/updated webhook)",
-    };
-  }
-
-  if (action === "leaving_for_canada") {
-    if (!hasTag(tags, TAGS.PIECE_MADE)) {
-      return { ok: false, error: "Complete Piece Made first" };
-    }
-    if (hasTag(tags, TAGS.LEAVING_FOR_CANADA)) {
-      return { ok: false, error: "Leaving for Canada already marked" };
+    if (hasTag(tags, workflowTags.pieceMadeTag)) {
+      return { ok: false, error: `${labels.pieceMade} already marked` };
     }
     const tagResult = await addOrderTags(admin, orderId, [
-      TAGS.LEAVING_FOR_CANADA,
+      workflowTags.pieceMadeTag,
     ]);
     if (!tagResult.ok) return tagResult;
     return {
       ok: true,
-      message:
-        "Leaving for Canada tagged (Klaviyo email via orders/updated webhook)",
+      message: `${labels.pieceMade} tagged (Klaviyo email via orders/updated webhook)`,
+    };
+  }
+
+  if (action === "leaving_for_canada") {
+    if (!hasTag(tags, workflowTags.pieceMadeTag)) {
+      return { ok: false, error: `Complete ${labels.pieceMade} first` };
+    }
+    if (hasTag(tags, workflowTags.leavingForCanadaTag)) {
+      return {
+        ok: false,
+        error: `${labels.leavingForCanada} already marked`,
+      };
+    }
+    const tagResult = await addOrderTags(admin, orderId, [
+      workflowTags.leavingForCanadaTag,
+    ]);
+    if (!tagResult.ok) return tagResult;
+    return {
+      ok: true,
+      message: `${labels.leavingForCanada} tagged (Klaviyo email via orders/updated webhook)`,
     };
   }
 
   if (action === "arrived_in_canada") {
-    if (!hasTag(tags, TAGS.LEAVING_FOR_CANADA)) {
-      return { ok: false, error: "Complete Leaving for Canada first" };
+    if (!hasTag(tags, workflowTags.leavingForCanadaTag)) {
+      return {
+        ok: false,
+        error: `Complete ${labels.leavingForCanada} first`,
+      };
     }
-    if (hasTag(tags, TAGS.ARRIVED_IN_CANADA)) {
-      return { ok: false, error: "Arrived in Canada already marked" };
+    if (hasTag(tags, workflowTags.arrivedInCanadaTag)) {
+      return { ok: false, error: `${labels.arrivedInCanada} already marked` };
     }
     const tagResult = await addOrderTags(admin, orderId, [
-      TAGS.ARRIVED_IN_CANADA,
+      workflowTags.arrivedInCanadaTag,
       TAGS.READY_TO_SHIP,
     ]);
     if (!tagResult.ok) return tagResult;
     return {
       ok: true,
-      message:
-        "Arrived in Canada + ready-to-ship tagged (Klaviyo email via webhook)",
+      message: `${labels.arrivedInCanada} + ready-to-ship tagged (Klaviyo email via webhook)`,
     };
   }
 

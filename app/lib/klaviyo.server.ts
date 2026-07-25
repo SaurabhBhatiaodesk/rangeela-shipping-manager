@@ -1,19 +1,18 @@
 import {
-  KLAVIYO_TEMPLATES,
+  KLAVIYO_STATUS_EMAIL_META,
   KLAVIYO_THURSDAY_METRIC,
-  TAGS,
+  type StatusEmailAction,
 } from "./tags";
-
-type KlaviyoTemplateKey =
-  | typeof TAGS.PIECE_MADE
-  | typeof TAGS.LEAVING_FOR_CANADA
-  | typeof TAGS.ARRIVED_IN_CANADA;
 
 export type KlaviyoSendResult =
   | { ok: true; skipped?: boolean; reason?: string }
   | { ok: false; error: string };
 
 const KLAVIYO_REVISION = "2024-10-15";
+
+function trimOrEmpty(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
 
 /**
  * Creates a Klaviyo event. A metric-triggered Flow must send the email.
@@ -69,7 +68,6 @@ async function createKlaviyoEvent(options: {
     }),
   });
 
-  // Create Event returns 202 Accepted on success
   if (response.status !== 202 && !response.ok) {
     const body = await response.text();
     return {
@@ -86,11 +84,13 @@ async function createKlaviyoEvent(options: {
  */
 export async function sendPreorderStatusEmail(options: {
   email: string | null | undefined;
-  statusTag: KlaviyoTemplateKey;
+  statusAction: StatusEmailAction;
+  statusTag: string;
   alreadySent: boolean;
   uniqueId?: string;
+  templateId: string;
 }): Promise<KlaviyoSendResult> {
-  const { email, statusTag, alreadySent } = options;
+  const { email, statusAction, statusTag, alreadySent, templateId } = options;
 
   if (alreadySent) {
     return { ok: true, skipped: true, reason: "already_sent" };
@@ -100,26 +100,34 @@ export async function sendPreorderStatusEmail(options: {
     return { ok: false, error: "Order has no customer email" };
   }
 
-  const template = KLAVIYO_TEMPLATES[statusTag];
-  if (!template) {
-    return { ok: false, error: `Unknown status tag: ${statusTag}` };
+  const meta = KLAVIYO_STATUS_EMAIL_META[statusAction];
+  if (!meta) {
+    return { ok: false, error: `Unknown status action: ${statusAction}` };
+  }
+
+  const resolvedTemplateId = trimOrEmpty(templateId);
+  if (!resolvedTemplateId) {
+    return {
+      ok: false,
+      error: `Klaviyo template ID is not set for ${statusAction}.`,
+    };
   }
 
   return createKlaviyoEvent({
     email,
-    metricName: template.metricName,
+    metricName: meta.metricName,
     uniqueId: options.uniqueId,
     properties: {
       status_tag: statusTag,
-      template_id: template.templateId,
-      subject: template.subject,
+      template_id: resolvedTemplateId,
+      subject: meta.subject,
     },
   });
 }
 
 /**
  * Thursday combined shipping invoice — triggers metric
- * `Rangeela Thursday Shipping Invoice` (Flow uses template from env/docs).
+ * `Rangeela Thursday Shipping Invoice` (Flow uses template from settings).
  */
 export async function sendThursdayInvoiceEmail(options: {
   email: string;
@@ -128,13 +136,14 @@ export async function sendThursdayInvoiceEmail(options: {
   orderNames: string[];
   shippingAmount: string;
   uniqueId?: string;
+  templateId: string;
 }): Promise<KlaviyoSendResult> {
-  const templateId = process.env.KLAVIYO_THURSDAY_TEMPLATE_ID;
+  const templateId = trimOrEmpty(options.templateId);
   if (!templateId) {
     return {
       ok: false,
       error:
-        "KLAVIYO_THURSDAY_TEMPLATE_ID is not set. Add the Thursday invoice template id.",
+        "Thursday invoice template ID is not set. Add it under Settings → Klaviyo template IDs.",
     };
   }
 

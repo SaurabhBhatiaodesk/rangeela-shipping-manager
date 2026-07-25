@@ -1,3 +1,4 @@
+import { config as dotenvConfig } from "dotenv";
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter } from "react-router";
@@ -5,6 +6,10 @@ import { createReadableStreamFromReadable } from "@react-router/node";
 import { type EntryContext } from "react-router";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
+
+// Load local env files for server runtime; keep process env overrides if already set.
+dotenvConfig({ path: ".env.local", override: false });
+dotenvConfig({ override: false });
 
 export const streamTimeout = 5000;
 

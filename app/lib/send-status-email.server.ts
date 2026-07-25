@@ -1,5 +1,13 @@
-import { TAGS, hasTag } from "./tags";
+import { hasTag } from "./tags";
 import { sendPreorderStatusEmail } from "./klaviyo.server";
+import {
+  emailSentTagForAction,
+  getKlaviyoTemplateIds,
+  statusTagForAction,
+  templateIdForAction,
+  type PreorderWorkflowTags,
+} from "./klaviyo-settings.server";
+import type { StatusEmailAction } from "./tags";
 import { graphqlJson, type AdminGraphql } from "./cycle-shared.server";
 
 async function addTags(admin: AdminGraphql, id: string, tags: string[]) {
@@ -33,14 +41,15 @@ export async function sendStatusEmailIfNeeded(
     orderId: string;
     email: string | null | undefined;
     tags: string[];
-    statusTag:
-      | typeof TAGS.PIECE_MADE
-      | typeof TAGS.LEAVING_FOR_CANADA
-      | typeof TAGS.ARRIVED_IN_CANADA;
-    sentTag: string;
+    statusAction: StatusEmailAction;
+    shop: string;
+    workflowTags: PreorderWorkflowTags;
   },
 ): Promise<{ ok: true; skipped?: boolean } | { ok: false; error: string }> {
-  const { orderId, email, tags, statusTag, sentTag } = options;
+  const { orderId, email, tags, statusAction, shop, workflowTags } = options;
+
+  const statusTag = statusTagForAction(workflowTags, statusAction);
+  const sentTag = emailSentTagForAction(workflowTags, statusAction);
 
   if (!hasTag(tags, statusTag)) {
     return { ok: true, skipped: true };
@@ -52,11 +61,15 @@ export async function sendStatusEmailIfNeeded(
     return { ok: false, error: "Order has no customer email" };
   }
 
+  const templateIds = await getKlaviyoTemplateIds(shop);
+
   const emailResult = await sendPreorderStatusEmail({
     email,
+    statusAction,
     statusTag,
     alreadySent: false,
     uniqueId: `${orderId}:${statusTag}`,
+    templateId: templateIdForAction(templateIds, statusAction),
   });
 
   if (!emailResult.ok) {

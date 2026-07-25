@@ -30,3 +30,23 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model ShopKlaviyoSettings {
+  shop                       String   @id
+  pieceMadeTemplateId        String   @default("")
+  leavingForCanadaTemplateId String   @default("")
+  arrivedInCanadaTemplateId  String   @default("")
+  thursdayTemplateId         String   @default("")
+  pieceMadeLabel             String   @default("")
+  leavingForCanadaLabel      String   @default("")
+  arrivedInCanadaLabel       String   @default("")
+  depositFulfilledLabel      String   @default("")
+  depositFulfilledDoneLabel  String   @default("")
+  pieceMadeTag               String   @default("")
+  leavingForCanadaTag        String   @default("")
+  arrivedInCanadaTag         String   @default("")
+  pieceMadeEmailSentTag      String   @default("")
+  leavingEmailSentTag        String   @default("")
+  arrivedEmailSentTag        String   @default("")
+  updatedAt                  DateTime @updatedAt
+}

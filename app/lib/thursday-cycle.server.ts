@@ -15,6 +15,7 @@ import {
   passesCycleTagGate,
 } from "./cycle-shared.server";
 import { sendThursdayInvoiceEmail } from "./klaviyo.server";
+import { getShopSettings } from "./klaviyo-settings.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -139,8 +140,11 @@ async function fetchCycleOrders(
   );
 }
 
-function isPool1Preorder(order: CycleOrder): boolean {
-  if (!hasTag(order.tags, TAGS.ARRIVED_IN_CANADA)) return false;
+function isPool1Preorder(
+  order: CycleOrder,
+  arrivedInCanadaTag: string,
+): boolean {
+  if (!hasTag(order.tags, arrivedInCanadaTag)) return false;
   if (!hasTag(order.tags, TAGS.READY_TO_SHIP)) return false;
   if (!passesCycleTagGate(order.tags)) return false;
   if (isSaskatoon(order)) return false;
@@ -406,16 +410,19 @@ async function createShippingDraft(
  */
 export async function runThursdayCycle(
   admin: AdminGraphql,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; shop: string },
 ): Promise<ThursdayCycleResult> {
   const dryRun = Boolean(options.dryRun);
+  const settings = await getShopSettings(options.shop);
+  const arrivedInCanadaTag = settings.preorderTags.arrivedInCanadaTag;
+  const thursdayTemplateId = settings.klaviyoTemplates.thursdayTemplateId;
 
   const [pool1Raw, pool2Raw] = await Promise.all([
     fetchCycleOrders(
       admin,
       [
         "status:open",
-        `tag:${TAGS.ARRIVED_IN_CANADA}`,
+        `tag:${arrivedInCanadaTag}`,
         `tag:${TAGS.READY_TO_SHIP}`,
       ].join(" AND "),
     ),
@@ -429,7 +436,9 @@ export async function runThursdayCycle(
     ),
   ]);
 
-  const pool1 = pool1Raw.filter(isPool1Preorder);
+  const pool1 = pool1Raw.filter((order) =>
+    isPool1Preorder(order, arrivedInCanadaTag),
+  );
   const pool2 = pool2Raw.filter(isPool2Rtw);
 
   const byId = new Map<string, CycleOrder>();
@@ -492,6 +501,7 @@ export async function runThursdayCycle(
         orderNames,
         shippingAmount: row.shippingAmount,
         uniqueId: `thursday:${draft.id}`,
+        templateId: thursdayTemplateId,
       });
 
       // Draft + tags always apply; email failure is reported but does not block tags
@@ -535,7 +545,7 @@ export async function runThursdayCycle(
   };
 }
 
-export async function previewThursdayPools(admin: AdminGraphql) {
-  const result = await runThursdayCycle(admin, { dryRun: true });
+export async function previewThursdayPools(admin: AdminGraphql, shop: string) {
+  const result = await runThursdayCycle(admin, { dryRun: true, shop });
   return result;
 }

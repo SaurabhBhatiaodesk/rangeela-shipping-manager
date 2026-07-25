@@ -1,10 +1,15 @@
-import { TAGS, hasTag, normalizeTags } from "./tags";
+import { hasTag, normalizeTags, type StatusEmailAction } from "./tags";
 import { sendStatusEmailIfNeeded } from "./send-status-email.server";
+import {
+  emailSentTagForAction,
+  getShopSettings,
+  statusTagForAction,
+  templateIdForAction,
+} from "./klaviyo-settings.server";
 import {
   type AdminGraphql,
   graphqlJson,
 } from "./cycle-shared.server";
-import { KLAVIYO_TEMPLATES } from "./tags";
 
 /**
  * Client Task 1 — Heroku poller (NOT Shopify Flow).
@@ -12,30 +17,14 @@ import { KLAVIYO_TEMPLATES } from "./tags";
  */
 
 type StatusEmailJob = {
-  statusTag:
-    | typeof TAGS.PIECE_MADE
-    | typeof TAGS.LEAVING_FOR_CANADA
-    | typeof TAGS.ARRIVED_IN_CANADA;
-  sentTag: string;
+  statusAction: StatusEmailAction;
   label: string;
 };
 
-const JOBS: StatusEmailJob[] = [
-  {
-    statusTag: TAGS.PIECE_MADE,
-    sentTag: TAGS.PIECE_MADE_EMAIL_SENT,
-    label: "Piece Made",
-  },
-  {
-    statusTag: TAGS.LEAVING_FOR_CANADA,
-    sentTag: TAGS.LEAVING_EMAIL_SENT,
-    label: "Leaving for Canada",
-  },
-  {
-    statusTag: TAGS.ARRIVED_IN_CANADA,
-    sentTag: TAGS.ARRIVED_EMAIL_SENT,
-    label: "Arrived in Canada",
-  },
+const STATUS_EMAIL_ACTIONS: StatusEmailAction[] = [
+  "piece_made",
+  "leaving_for_canada",
+  "arrived_in_canada",
 ];
 
 export type StatusEmailRow = {
@@ -57,6 +46,25 @@ export type StatusEmailPollResult = {
   rows: StatusEmailRow[];
   message: string;
 };
+
+function buildJobs(settings: Awaited<ReturnType<typeof getShopSettings>>): StatusEmailJob[] {
+  return STATUS_EMAIL_ACTIONS.map((statusAction) => {
+    switch (statusAction) {
+      case "piece_made":
+        return { statusAction, label: settings.preorderLabels.pieceMade };
+      case "leaving_for_canada":
+        return {
+          statusAction,
+          label: settings.preorderLabels.leavingForCanada,
+        };
+      case "arrived_in_canada":
+        return {
+          statusAction,
+          label: settings.preorderLabels.arrivedInCanada,
+        };
+    }
+  });
+}
 
 async function fetchOrdersNeedingEmail(
   admin: AdminGraphql,
@@ -101,27 +109,34 @@ async function fetchOrdersNeedingEmail(
 
 export async function runStatusEmailPoller(
   admin: AdminGraphql,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; shop: string },
 ): Promise<StatusEmailPollResult> {
   const dryRun = Boolean(options.dryRun);
+  const settings = await getShopSettings(options.shop);
+  const jobs = buildJobs(settings);
   const rows: StatusEmailRow[] = [];
   let sent = 0;
   let skipped = 0;
   let errors = 0;
   let checked = 0;
 
-  for (const job of JOBS) {
-    const orders = await fetchOrdersNeedingEmail(
-      admin,
-      job.statusTag,
-      job.sentTag,
+  for (const job of jobs) {
+    const statusTag = statusTagForAction(
+      settings.preorderTags,
+      job.statusAction,
     );
+    const sentTag = emailSentTagForAction(
+      settings.preorderTags,
+      job.statusAction,
+    );
+
+    const orders = await fetchOrdersNeedingEmail(admin, statusTag, sentTag);
 
     for (const order of orders) {
       checked += 1;
 
-      const statusOk = hasTag(order.tags, job.statusTag);
-      const alreadySent = hasTag(order.tags, job.sentTag);
+      const statusOk = hasTag(order.tags, statusTag);
+      const alreadySent = hasTag(order.tags, sentTag);
 
       if (!statusOk || alreadySent || !order.email) {
         skipped += 1;
@@ -148,7 +163,7 @@ export async function runStatusEmailPoller(
           email: order.email,
           job: job.label,
           result: "skipped",
-          detail: `preview only — would send template ${KLAVIYO_TEMPLATES[job.statusTag].templateId}`,
+          detail: `preview only — would send template ${templateIdForAction(settings.klaviyoTemplates, job.statusAction)}`,
         });
         continue;
       }
@@ -157,8 +172,9 @@ export async function runStatusEmailPoller(
         orderId: order.id,
         email: order.email,
         tags: order.tags,
-        statusTag: job.statusTag,
-        sentTag: job.sentTag,
+        statusAction: job.statusAction,
+        shop: options.shop,
+        workflowTags: settings.preorderTags,
       });
 
       if (!result.ok) {
@@ -193,7 +209,7 @@ export async function runStatusEmailPoller(
         email: order.email,
         job: job.label,
         result: "sent",
-        detail: `template ${KLAVIYO_TEMPLATES[job.statusTag].templateId}`,
+        detail: `template ${templateIdForAction(settings.klaviyoTemplates, job.statusAction)}`,
       });
     }
   }

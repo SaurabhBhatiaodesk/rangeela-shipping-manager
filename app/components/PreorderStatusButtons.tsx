@@ -1,11 +1,14 @@
 import { hasTag, TAGS } from "../lib/tags";
 import type { ShippingOrder } from "../lib/orders.server";
 import type { StatusAction } from "../lib/tags";
+import type { PreorderWorkflowLabels, PreorderWorkflowTags } from "../lib/klaviyo-settings.server";
 
 type Props = {
   order: ShippingOrder;
   busyAction: string | null;
   onAction: (orderId: string, action: StatusAction) => void;
+  labels: PreorderWorkflowLabels;
+  workflowTags: PreorderWorkflowTags;
 };
 
 function DoneBadge({ children }: { children: string }) {
@@ -16,14 +19,20 @@ function DoneBadge({ children }: { children: string }) {
   );
 }
 
-export function PreorderStatusButtons({ order, busyAction, onAction }: Props) {
+export function PreorderStatusButtons({
+  order,
+  busyAction,
+  onAction,
+  labels,
+  workflowTags,
+}: Props) {
   const { tags, id, isSkirtDeposit } = order;
   const busy = busyAction?.startsWith(id) ?? false;
 
   if (isSkirtDeposit) {
     const done = hasTag(tags, TAGS.DEPOSIT_FULFILLED);
     if (done) {
-      return <DoneBadge>Deposit fulfilled</DoneBadge>;
+      return <DoneBadge>{labels.depositFulfilledDone}</DoneBadge>;
     }
     return (
       <s-button
@@ -32,19 +41,19 @@ export function PreorderStatusButtons({ order, busyAction, onAction }: Props) {
         {...(busyAction === `${id}:deposit_fulfilled` ? { loading: true } : {})}
         onClick={() => onAction(id, "deposit_fulfilled")}
       >
-        Mark Deposit Fulfilled
+        {labels.depositFulfilled}
       </s-button>
     );
   }
 
-  const pieceMade = hasTag(tags, TAGS.PIECE_MADE);
-  const leaving = hasTag(tags, TAGS.LEAVING_FOR_CANADA);
-  const arrived = hasTag(tags, TAGS.ARRIVED_IN_CANADA);
+  const pieceMade = hasTag(tags, workflowTags.pieceMadeTag);
+  const leaving = hasTag(tags, workflowTags.leavingForCanadaTag);
+  const arrived = hasTag(tags, workflowTags.arrivedInCanadaTag);
 
   return (
     <s-stack direction="inline" gap="small-200">
       {pieceMade ? (
-        <DoneBadge>Piece Made</DoneBadge>
+        <DoneBadge>{labels.pieceMade}</DoneBadge>
       ) : (
         <s-button
           variant="primary"
@@ -52,12 +61,12 @@ export function PreorderStatusButtons({ order, busyAction, onAction }: Props) {
           {...(busyAction === `${id}:piece_made` ? { loading: true } : {})}
           onClick={() => onAction(id, "piece_made")}
         >
-          Piece Made
+          {labels.pieceMade}
         </s-button>
       )}
 
       {leaving ? (
-        <DoneBadge>Leaving for Canada</DoneBadge>
+        <DoneBadge>{labels.leavingForCanada}</DoneBadge>
       ) : (
         <s-button
           variant="primary"
@@ -67,12 +76,12 @@ export function PreorderStatusButtons({ order, busyAction, onAction }: Props) {
             : {})}
           onClick={() => onAction(id, "leaving_for_canada")}
         >
-          Leaving for Canada
+          {labels.leavingForCanada}
         </s-button>
       )}
 
       {arrived ? (
-        <DoneBadge>Arrived in Canada</DoneBadge>
+        <DoneBadge>{labels.arrivedInCanada}</DoneBadge>
       ) : (
         <s-button
           variant="primary"
@@ -82,7 +91,7 @@ export function PreorderStatusButtons({ order, busyAction, onAction }: Props) {
             : {})}
           onClick={() => onAction(id, "arrived_in_canada")}
         >
-          Arrived in Canada
+          {labels.arrivedInCanada}
         </s-button>
       )}
     </s-stack>

@@ -24,19 +24,35 @@ import { useEffect, useState, startTransition } from "react";
   import type { StatusAction } from "../lib/tags";
   import { hasTag, TAGS } from "../lib/tags";
   import { authenticate } from "../shopify.server";
+  import {
+    getShopSettings,
+    saveShopSettings,
+  } from "../lib/klaviyo-settings.server";
+  import { KLAVIYO_STATUS_EMAIL_META } from "../lib/tags";
 
-  type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
+  type TabId =
+    | "preorders"
+    | "emails"
+    | "thursday"
+    | "alerts"
+    | "friday"
+    | "settings";
 
   export const loader = async ({ request }: LoaderFunctionArgs) => {
-    const { admin } = await authenticate.admin(request);
+    const { admin, session } = await authenticate.admin(request);
     const url = new URL(request.url);
     const tab = (url.searchParams.get("tab") || "preorders") as TabId;
+
+    const shopSettings = await getShopSettings(session.shop);
 
     const base = {
       klaviyoConfigured: Boolean(process.env.KLAVIYO_API_KEY),
       thursdayTemplateConfigured: Boolean(
-        process.env.KLAVIYO_THURSDAY_TEMPLATE_ID,
+        shopSettings.klaviyoTemplates.thursdayTemplateId,
       ),
+      klaviyoTemplates: shopSettings.klaviyoTemplates,
+      preorderLabels: shopSettings.preorderLabels,
+      preorderTags: shopSettings.preorderTags,
       cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SHOP),
       loadError: null as string | null,
     };
@@ -48,7 +64,10 @@ import { useEffect, useState, startTransition } from "react";
       }
 
       if (tab === "thursday") {
-        const thursdayPreview = await previewThursdayPools(admin);
+        const thursdayPreview = await previewThursdayPools(
+          admin,
+          session.shop,
+        );
         return {
           ...base,
           tab,
@@ -58,7 +77,7 @@ import { useEffect, useState, startTransition } from "react";
         };
       }
 
-      if (tab === "friday" || tab === "emails") {
+      if (tab === "friday" || tab === "emails" || tab === "settings") {
         return {
           ...base,
           tab,
@@ -68,7 +87,10 @@ import { useEffect, useState, startTransition } from "react";
         };
       }
 
-      const preorders = await fetchAwaitingReadinessOrders(admin);
+      const preorders = await fetchAwaitingReadinessOrders(
+        admin,
+        shopSettings.preorderTags,
+      );
       return {
         ...base,
         tab,
@@ -91,13 +113,58 @@ import { useEffect, useState, startTransition } from "react";
   };
 
   export const action = async ({ request }: ActionFunctionArgs) => {
-    const { admin } = await authenticate.admin(request);
+    const { admin, session } = await authenticate.admin(request);
     const formData = await request.formData();
     const intent = String(formData.get("intent") || "status");
 
+    if (
+      intent === "save_shop_settings" ||
+      intent === "save_klaviyo_templates"
+    ) {
+      await saveShopSettings(session.shop, {
+        pieceMadeTemplateId: String(
+          formData.get("pieceMadeTemplateId") || "",
+        ),
+        leavingForCanadaTemplateId: String(
+          formData.get("leavingForCanadaTemplateId") || "",
+        ),
+        arrivedInCanadaTemplateId: String(
+          formData.get("arrivedInCanadaTemplateId") || "",
+        ),
+        thursdayTemplateId: String(formData.get("thursdayTemplateId") || ""),
+        pieceMade: String(formData.get("pieceMade") || ""),
+        leavingForCanada: String(formData.get("leavingForCanada") || ""),
+        arrivedInCanada: String(formData.get("arrivedInCanada") || ""),
+        depositFulfilled: String(formData.get("depositFulfilled") || ""),
+        depositFulfilledDone: String(
+          formData.get("depositFulfilledDone") || "",
+        ),
+        pieceMadeTag: String(formData.get("pieceMadeTag") || ""),
+        leavingForCanadaTag: String(formData.get("leavingForCanadaTag") || ""),
+        arrivedInCanadaTag: String(formData.get("arrivedInCanadaTag") || ""),
+        pieceMadeEmailSentTag: String(
+          formData.get("pieceMadeEmailSentTag") || "",
+        ),
+        leavingEmailSentTag: String(
+          formData.get("leavingEmailSentTag") || "",
+        ),
+        arrivedEmailSentTag: String(
+          formData.get("arrivedEmailSentTag") || "",
+        ),
+      });
+      const shopSettings = await getShopSettings(session.shop);
+      return {
+        ok: true as const,
+        message: "Settings saved",
+        klaviyoTemplates: shopSettings.klaviyoTemplates,
+        preorderLabels: shopSettings.preorderLabels,
+        preorderTags: shopSettings.preorderTags,
+      };
+    }
+
     if (intent === "thursday_run") {
       const dryRun = formData.get("dryRun") === "1";
-      return runThursdayCycle(admin, { dryRun });
+      return runThursdayCycle(admin, { dryRun, shop: session.shop });
     }
 
     if (intent === "friday_run") {
@@ -107,7 +174,7 @@ import { useEffect, useState, startTransition } from "react";
 
     if (intent === "status_emails_run") {
       const dryRun = formData.get("dryRun") === "1";
-      return runStatusEmailPoller(admin, { dryRun });
+      return runStatusEmailPoller(admin, { dryRun, shop: session.shop });
     }
 
     const orderId = String(formData.get("orderId") || "");
@@ -117,7 +184,11 @@ import { useEffect, useState, startTransition } from "react";
       return { ok: false as const, error: "Missing orderId or action" };
     }
 
-    return applyStatusAction(admin, orderId, actionName);
+    const shopSettings = await getShopSettings(session.shop);
+    return applyStatusAction(admin, orderId, actionName, {
+      workflowTags: shopSettings.preorderTags,
+      labels: shopSettings.preorderLabels,
+    });
   };
 
   function TabButton({
@@ -188,11 +259,40 @@ import { useEffect, useState, startTransition } from "react";
     const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
     const cycleBusy = fetcher.state !== "idle";
 
+    const [settingsForm, setSettingsForm] = useState({
+      ...data.klaviyoTemplates,
+      ...data.preorderLabels,
+      ...data.preorderTags,
+    });
+
+    useEffect(() => {
+      setSettingsForm({
+        ...data.klaviyoTemplates,
+        ...data.preorderLabels,
+        ...data.preorderTags,
+      });
+    }, [data.klaviyoTemplates, data.preorderLabels, data.preorderTags]);
+
     useEffect(() => {
       if (fetcher.state !== "idle") return;
       setBusyAction(null);
 
       if (!fetcher.data) return;
+
+      if (
+        "klaviyoTemplates" in fetcher.data &&
+        fetcher.data.klaviyoTemplates &&
+        "preorderLabels" in fetcher.data &&
+        fetcher.data.preorderLabels &&
+        "preorderTags" in fetcher.data &&
+        fetcher.data.preorderTags
+      ) {
+        setSettingsForm({
+          ...fetcher.data.klaviyoTemplates,
+          ...fetcher.data.preorderLabels,
+          ...fetcher.data.preorderTags,
+        });
+      }
 
       if ("rows" in fetcher.data && Array.isArray(fetcher.data.rows)) {
         setLastEmailRun({ rows: fetcher.data.rows });
@@ -241,6 +341,31 @@ import { useEffect, useState, startTransition } from "react";
       setBusyAction(`${intent}:${dryRun ? "preview" : "run"}`);
       fetcher.submit(
         { intent, dryRun: dryRun ? "1" : "0" },
+        { method: "POST" },
+      );
+    };
+
+    const saveShopSettingsForm = () => {
+      setBusyAction("save_shop_settings");
+      fetcher.submit(
+        {
+          intent: "save_shop_settings",
+          pieceMadeTemplateId: settingsForm.pieceMadeTemplateId,
+          leavingForCanadaTemplateId: settingsForm.leavingForCanadaTemplateId,
+          arrivedInCanadaTemplateId: settingsForm.arrivedInCanadaTemplateId,
+          thursdayTemplateId: settingsForm.thursdayTemplateId,
+          pieceMade: settingsForm.pieceMade,
+          leavingForCanada: settingsForm.leavingForCanada,
+          arrivedInCanada: settingsForm.arrivedInCanada,
+          depositFulfilled: settingsForm.depositFulfilled,
+          depositFulfilledDone: settingsForm.depositFulfilledDone,
+          pieceMadeTag: settingsForm.pieceMadeTag,
+          leavingForCanadaTag: settingsForm.leavingForCanadaTag,
+          arrivedInCanadaTag: settingsForm.arrivedInCanadaTag,
+          pieceMadeEmailSentTag: settingsForm.pieceMadeEmailSentTag,
+          leavingEmailSentTag: settingsForm.leavingEmailSentTag,
+          arrivedEmailSentTag: settingsForm.arrivedEmailSentTag,
+        },
         { method: "POST" },
       );
     };
@@ -298,6 +423,12 @@ import { useEffect, useState, startTransition } from "react";
               label="Friday reset"
               onClick={() => setTab("friday")}
             />
+            <TabButton
+              active={tab === "settings"}
+              number="06"
+              label="Settings"
+              onClick={() => setTab("settings")}
+            />
           </s-stack>
         </s-section>
 
@@ -305,10 +436,15 @@ import { useEffect, useState, startTransition } from "react";
           <s-section heading="Preorders — Awaiting Readiness" padding="base">
             <s-banner heading="Status progress" tone="info">
               <s-paragraph>
-                Update each preorder in order: Piece Made → Leaving for Canada →
-                Arrived in Canada. Completed steps show as green success badges.
-                Skirt deposits use Mark Deposit Fulfilled.
+                Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
+                {data.preorderLabels.leavingForCanada} →{" "}
+                {data.preorderLabels.arrivedInCanada}. Completed steps show as
+                green success badges. Skirt deposits use{" "}
+                {data.preorderLabels.depositFulfilled}.
               </s-paragraph>
+              <s-button variant="secondary" onClick={() => setTab("settings")}>
+                Edit button labels &amp; order tags
+              </s-button>
             </s-banner>
             {data.preorders.length === 0 ? (
               <s-banner heading="No preorders yet" tone="warning">
@@ -355,8 +491,10 @@ import { useEffect, useState, startTransition } from "react";
                                 Skirt deposit
                               </s-badge>
                             )
-                          ) : hasTag(order.tags, TAGS.ARRIVED_IN_CANADA) ||
-                            hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
+                          ) : hasTag(
+                              order.tags,
+                              data.preorderTags.arrivedInCanadaTag,
+                            ) || hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
                             <s-badge
                               tone="success"
                               color="strong"
@@ -364,11 +502,14 @@ import { useEffect, useState, startTransition } from "react";
                             >
                               Preorder
                             </s-badge>
-                          ) : hasTag(order.tags, TAGS.LEAVING_FOR_CANADA) ? (
+                          ) : hasTag(
+                              order.tags,
+                              data.preorderTags.leavingForCanadaTag,
+                            ) ? (
                             <s-badge tone="caution" color="strong">
                               Preorder
                             </s-badge>
-                          ) : hasTag(order.tags, TAGS.PIECE_MADE) ? (
+                          ) : hasTag(order.tags, data.preorderTags.pieceMadeTag) ? (
                             <s-badge tone="info" color="strong">
                               Preorder
                             </s-badge>
@@ -381,6 +522,8 @@ import { useEffect, useState, startTransition } from "react";
                             order={order}
                             busyAction={busyAction}
                             onAction={runAction}
+                            labels={data.preorderLabels}
+                            workflowTags={data.preorderTags}
                           />
                         </s-table-cell>
                       </s-table-row>
@@ -425,19 +568,56 @@ import { useEffect, useState, startTransition } from "react";
                 </s-paragraph>
                 <s-unordered-list>
                   <s-list-item>
-                    Piece Made → metric "Rangeela Piece Made" → template WMcvs7
-                    → tag piece-made-email-sent
+                    {data.preorderLabels.pieceMade} → tag{" "}
+                    <s-text type="strong">{data.preorderTags.pieceMadeTag}</s-text>{" "}
+                    → metric "
+                    {KLAVIYO_STATUS_EMAIL_META.piece_made.metricName}" →
+                    template {data.klaviyoTemplates.pieceMadeTemplateId} →
+                    email-sent tag{" "}
+                    <s-text type="strong">
+                      {data.preorderTags.pieceMadeEmailSentTag}
+                    </s-text>
                   </s-list-item>
                   <s-list-item>
-                    Leaving for Canada → metric "Rangeela Leaving for Canada" →
-                    template TB2w7d → tag leaving-email-sent
+                    {data.preorderLabels.leavingForCanada} → tag{" "}
+                    <s-text type="strong">
+                      {data.preorderTags.leavingForCanadaTag}
+                    </s-text>{" "}
+                    → metric "
+                    {KLAVIYO_STATUS_EMAIL_META.leaving_for_canada.metricName}
+                    " → template{" "}
+                    {data.klaviyoTemplates.leavingForCanadaTemplateId} →
+                    email-sent tag{" "}
+                    <s-text type="strong">
+                      {data.preorderTags.leavingEmailSentTag}
+                    </s-text>
                   </s-list-item>
                   <s-list-item>
-                    Arrived in Canada → metric "Rangeela Arrived in Canada" →
-                    template XmXMMJ → tag arrived-email-sent
+                    {data.preorderLabels.arrivedInCanada} → tag{" "}
+                    <s-text type="strong">
+                      {data.preorderTags.arrivedInCanadaTag}
+                    </s-text>{" "}
+                    → metric "
+                    {KLAVIYO_STATUS_EMAIL_META.arrived_in_canada.metricName}
+                    " → template{" "}
+                    {data.klaviyoTemplates.arrivedInCanadaTemplateId} →
+                    email-sent tag{" "}
+                    <s-text type="strong">
+                      {data.preorderTags.arrivedEmailSentTag}
+                    </s-text>
                   </s-list-item>
                 </s-unordered-list>
               </s-stack>
+
+              <s-banner heading="Template IDs, labels &amp; tags" tone="info">
+                <s-paragraph>
+                  Configure Shopify order tags, button labels, and Klaviyo
+                  template IDs in the Settings tab.
+                </s-paragraph>
+                <s-button variant="secondary" onClick={() => setTab("settings")}>
+                  Open Settings
+                </s-button>
+              </s-banner>
 
               <s-banner
                 heading={
@@ -562,11 +742,9 @@ import { useEffect, useState, startTransition } from "react";
                   tone="warning"
                 >
                   <s-paragraph>
-                    Ask the client for the Thursday shipping invoice Klaviyo
-                    template ID, then set{" "}
-                    <s-text type="strong">KLAVIYO_THURSDAY_TEMPLATE_ID</s-text>.
-                    Preview and draft orders still work; invoice emails send after
-                    the ID is set.
+                    Open the Settings tab and set the Thursday shipping invoice
+                    template ID, then save. Preview and draft orders still work;
+                    invoice emails send after the ID is set.
                   </s-paragraph>
                 </s-banner>
               )}
@@ -626,6 +804,200 @@ import { useEffect, useState, startTransition } from "react";
                 ))}
               </s-stack>
             )}
+          </s-section>
+        )}
+
+        {tab === "settings" && (
+          <s-section heading="Settings" padding="base">
+            <s-stack direction="block" gap="large">
+              <s-section heading="Shopify order tags" padding="base">
+                <s-stack direction="block" gap="base">
+                  <s-paragraph>
+                    Tags added to orders when you click each button on the
+                    Preorders tab. Leave blank to use defaults (e.g.{" "}
+                    <s-text type="strong">piece-made-notified</s-text>).
+                  </s-paragraph>
+                  <s-text-field
+                    label="Piece Made status tag"
+                    value={settingsForm.pieceMadeTag}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        pieceMadeTag: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Leaving for Canada status tag"
+                    value={settingsForm.leavingForCanadaTag}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        leavingForCanadaTag: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Arrived in Canada status tag"
+                    value={settingsForm.arrivedInCanadaTag}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        arrivedInCanadaTag: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Piece Made email-sent tag"
+                    value={settingsForm.pieceMadeEmailSentTag}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        pieceMadeEmailSentTag: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Leaving email-sent tag"
+                    value={settingsForm.leavingEmailSentTag}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        leavingEmailSentTag: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Arrived email-sent tag"
+                    value={settingsForm.arrivedEmailSentTag}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        arrivedEmailSentTag: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                </s-stack>
+              </s-section>
+
+              <s-section heading="Preorder workflow labels" padding="base">
+                <s-stack direction="block" gap="base">
+                  <s-paragraph>
+                    Button and badge text on the Preorders tab. Leave blank to
+                    use the built-in defaults.
+                  </s-paragraph>
+                  <s-text-field
+                    label="Piece Made button / badge"
+                    value={settingsForm.pieceMade}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        pieceMade: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Leaving for Canada button / badge"
+                    value={settingsForm.leavingForCanada}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        leavingForCanada: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Arrived in Canada button / badge"
+                    value={settingsForm.arrivedInCanada}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        arrivedInCanada: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Skirt deposit button"
+                    value={settingsForm.depositFulfilled}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        depositFulfilled: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Skirt deposit completed badge"
+                    value={settingsForm.depositFulfilledDone}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        depositFulfilledDone: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                </s-stack>
+              </s-section>
+
+              <s-section heading="Klaviyo template IDs" padding="base">
+                <s-stack direction="block" gap="base">
+                  <s-paragraph>
+                    Short ID from the Klaviyo template URL. Saved per shop and
+                    sent on each Klaviyo event (Flows should use the same
+                    templates).
+                  </s-paragraph>
+                  <s-text-field
+                    label="Piece Made template ID"
+                    value={settingsForm.pieceMadeTemplateId}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        pieceMadeTemplateId: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Leaving for Canada template ID"
+                    value={settingsForm.leavingForCanadaTemplateId}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        leavingForCanadaTemplateId: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Arrived in Canada template ID"
+                    value={settingsForm.arrivedInCanadaTemplateId}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        arrivedInCanadaTemplateId: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <s-text-field
+                    label="Thursday shipping invoice template ID"
+                    value={settingsForm.thursdayTemplateId}
+                    onChange={(e) =>
+                      setSettingsForm((prev) => ({
+                        ...prev,
+                        thursdayTemplateId: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                </s-stack>
+              </s-section>
+
+              <s-button
+                variant="primary"
+                disabled={cycleBusy}
+                {...(isBusy("save_shop_settings") ? { loading: true } : {})}
+                onClick={saveShopSettingsForm}
+              >
+                Save settings
+              </s-button>
+            </s-stack>
           </s-section>
         )}
 

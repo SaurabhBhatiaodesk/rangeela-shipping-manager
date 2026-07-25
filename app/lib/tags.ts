@@ -32,26 +32,23 @@ export type StatusAction =
  * App creates a metric event; a Klaviyo Flow (triggered by that metric)
  * sends the email that uses the template ID below.
  */
-export const KLAVIYO_TEMPLATES = {
-  [TAGS.PIECE_MADE]: {
-    templateId: "WMcvs7",
+/** Metric names and subjects; keyed by status action (not tag string). */
+export const KLAVIYO_STATUS_EMAIL_META = {
+  piece_made: {
     metricName: "Rangeela Piece Made",
     subject: "The saree you chose is now your dress!",
-    sentTag: TAGS.PIECE_MADE_EMAIL_SENT,
   },
-  [TAGS.LEAVING_FOR_CANADA]: {
-    templateId: "TB2w7d",
+  leaving_for_canada: {
     metricName: "Rangeela Leaving for Canada",
     subject: "Guess who's flying to Canada? Your Rangeelaa piece!",
-    sentTag: TAGS.LEAVING_EMAIL_SENT,
   },
-  [TAGS.ARRIVED_IN_CANADA]: {
-    templateId: "XmXMMJ",
+  arrived_in_canada: {
     metricName: "Rangeela Arrived in Canada",
     subject: "Guess what just landed in Canada?",
-    sentTag: TAGS.ARRIVED_EMAIL_SENT,
   },
 } as const;
+
+export type StatusEmailAction = keyof typeof KLAVIYO_STATUS_EMAIL_META;
 
 /** Metric that triggers the Thursday combined shipping invoice flow */
 export const KLAVIYO_THURSDAY_METRIC =
