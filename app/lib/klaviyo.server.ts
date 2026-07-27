@@ -156,7 +156,6 @@ export async function sendThursdayInvoiceEmail(options: {
         "Thursday invoice template ID is not set. Add it under Settings → Klaviyo template IDs.",
     };
   }
-
   if (!options.invoiceUrl) {
     return { ok: false, error: "Draft order has no invoiceUrl" };
   }
