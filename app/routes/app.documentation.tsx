@@ -350,19 +350,19 @@ export default function DocumentationPage() {
 
   return (
     <s-page heading="Documentation" inlineSize="large">
-      <s-section heading="What each tab does" padding="base">
+      <s-section heading="Your 5-Step Weekly Workflow" padding="base">
         <s-banner heading="5 tabs, one weekly cycle" tone="info">
           <s-paragraph>
             Rangeela Shipping Manager automates preorder status updates,
             weekly combined shipping invoices, the "bought again after
             paying" alert, and the Friday cleanup for unpaid invoices. Open
-            a tab below for what it does and how its buttons work.
+            a step below to see what it does and how its buttons work.
           </s-paragraph>
         </s-banner>
         <DocAccordion items={tabItems} />
       </s-section>
 
-      <s-section heading="Reference" padding="base">
+      <s-section heading="Good to Know" padding="base">
         <DocAccordion items={referenceItems} />
       </s-section>
     </s-page>
