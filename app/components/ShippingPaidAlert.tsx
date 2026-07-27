@@ -16,7 +16,7 @@ export function ShippingPaidAlert({ order, busy, onHold }: Props) {
       tone="info"
     >
       <s-stack direction="block" gap="base">
-        <s-paragraph>
+        <s-paragraph color="base">
           {order.customerName || order.email || "Customer"} bought a new
           item after shipping was already paid. Ship now (manual) or hold
           for next Thursday?
