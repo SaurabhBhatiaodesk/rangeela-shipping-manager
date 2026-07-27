@@ -634,15 +634,15 @@ import { useEffect, useRef, useState, startTransition } from "react";
               </s-stack>
 
               <s-banner heading="Tags, labels &amp; templates" tone="info">
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    Configure Shopify order tags, button labels, and Klaviyo
-                    template IDs on the Settings page.
-                  </s-paragraph>
-                  <s-link href="/app/settings">
-                    <s-button variant="secondary">Open Settings</s-button>
-                  </s-link>
-                </s-stack>
+                Configure Shopify order tags, button labels, and Klaviyo
+                template IDs on the Settings page.
+                <s-button
+                  slot="secondary-actions"
+                  variant="secondary"
+                  href="/app/settings"
+                >
+                  Open Settings
+                </s-button>
               </s-banner>
 
               <s-banner
@@ -653,12 +653,17 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 }
                 tone={data.klaviyoConfigured ? "success" : "warning"}
               >
-                <s-paragraph>
-                  To test: in Shopify Admin, add the tag{" "}
-                  <s-text type="strong">piece-made-notified</s-text> to an order.
-                  Confirm the customer receives the email and the order gets{" "}
-                  <s-text type="strong">piece-made-email-sent</s-text>.
-                </s-paragraph>
+                To test: in Shopify Admin, add the tag{" "}
+                <s-text type="strong">piece-made-notified</s-text> to an
+                order. Confirm the customer receives the email and the order
+                gets <s-text type="strong">piece-made-email-sent</s-text>.
+                <s-button
+                  slot="secondary-actions"
+                  variant="secondary"
+                  href="/app/documentation"
+                >
+                  View setup guide
+                </s-button>
               </s-banner>
 
               <s-stack direction="block" gap="base">
