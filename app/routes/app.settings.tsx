@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -97,6 +97,72 @@ function field(
   return form[key];
 }
 
+function TagChipField({
+  label,
+  name,
+  value,
+  defaultValue,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  defaultValue: string;
+  onChange: (e: Event & { currentTarget: { value: string } }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const containerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setEditing(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
+  }, [editing]);
+
+  return (
+    <s-stack
+      ref={containerRef as never}
+      direction="block"
+      gap="small-200"
+    >
+      <s-text type="strong">{label}</s-text>
+      {editing ? (
+        <s-text-field
+          label={label}
+          labelAccessibilityVisibility="exclusive"
+          name={name}
+          value={value}
+          details={`Default: ${defaultValue}`}
+          onChange={onChange}
+        />
+      ) : (
+        <>
+          <s-clickable
+            onClick={() => setEditing(true)}
+            accessibilityLabel={`Edit ${label}`}
+          >
+            <s-badge tone={value ? "info" : "neutral"} color="strong">
+              {value || defaultValue}
+            </s-badge>
+          </s-clickable>
+          <input type="hidden" name={name} value={value} />
+        </>
+      )}
+    </s-stack>
+  );
+}
+
 export default function SettingsPage() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -159,46 +225,46 @@ export default function SettingsPage() {
                 Tags applied to orders for each preorder workflow step. Also
                 used by status email polling and the Thursday invoice pool.
               </s-paragraph>
-              <s-text-field
+              <TagChipField
                 label="Piece Made status tag"
                 name="pieceMadeTag"
                 value={field(form, "pieceMadeTag")}
-                details={`Default: ${data.defaults.tags.pieceMadeTag}`}
+                defaultValue={data.defaults.tags.pieceMadeTag}
                 onChange={update("pieceMadeTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Leaving for Canada status tag"
                 name="leavingForCanadaTag"
                 value={field(form, "leavingForCanadaTag")}
-                details={`Default: ${data.defaults.tags.leavingForCanadaTag}`}
+                defaultValue={data.defaults.tags.leavingForCanadaTag}
                 onChange={update("leavingForCanadaTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Arrived in Canada status tag"
                 name="arrivedInCanadaTag"
                 value={field(form, "arrivedInCanadaTag")}
-                details={`Default: ${data.defaults.tags.arrivedInCanadaTag}`}
+                defaultValue={data.defaults.tags.arrivedInCanadaTag}
                 onChange={update("arrivedInCanadaTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Piece Made email-sent tag"
                 name="pieceMadeEmailSentTag"
                 value={field(form, "pieceMadeEmailSentTag")}
-                details={`Default: ${data.defaults.tags.pieceMadeEmailSentTag}`}
+                defaultValue={data.defaults.tags.pieceMadeEmailSentTag}
                 onChange={update("pieceMadeEmailSentTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Leaving email-sent tag"
                 name="leavingEmailSentTag"
                 value={field(form, "leavingEmailSentTag")}
-                details={`Default: ${data.defaults.tags.leavingEmailSentTag}`}
+                defaultValue={data.defaults.tags.leavingEmailSentTag}
                 onChange={update("leavingEmailSentTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Arrived email-sent tag"
                 name="arrivedEmailSentTag"
                 value={field(form, "arrivedEmailSentTag")}
-                details={`Default: ${data.defaults.tags.arrivedEmailSentTag}`}
+                defaultValue={data.defaults.tags.arrivedEmailSentTag}
                 onChange={update("arrivedEmailSentTag")}
               />
             </s-stack>
@@ -215,60 +281,60 @@ export default function SettingsPage() {
                   hide orders from these tabs until you re-tag them.
                 </s-paragraph>
               </s-banner>
-              <s-text-field
+              <TagChipField
                 label="Ready to ship tag"
                 name="readyToShipTag"
                 value={field(form, "readyToShipTag")}
-                details={`Default: ${data.defaults.tags.readyToShipTag}`}
+                defaultValue={data.defaults.tags.readyToShipTag}
                 onChange={update("readyToShipTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Skirt deposit — group tag"
                 name="groupTag"
                 value={field(form, "groupTag")}
-                details={`Default: ${data.defaults.tags.groupTag}`}
+                defaultValue={data.defaults.tags.groupTag}
                 onChange={update("groupTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Skirt deposit — partial tag"
                 name="partialTag"
                 value={field(form, "partialTag")}
-                details={`Default: ${data.defaults.tags.partialTag}`}
+                defaultValue={data.defaults.tags.partialTag}
                 onChange={update("partialTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Deposit fulfilled tag"
                 name="depositFulfilledTag"
                 value={field(form, "depositFulfilledTag")}
-                details={`Default: ${data.defaults.tags.depositFulfilledTag}`}
+                defaultValue={data.defaults.tags.depositFulfilledTag}
                 onChange={update("depositFulfilledTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Thursday email-sent tag"
                 name="thursdayEmailSentTag"
                 value={field(form, "thursdayEmailSentTag")}
-                details={`Default: ${data.defaults.tags.thursdayEmailSentTag}`}
+                defaultValue={data.defaults.tags.thursdayEmailSentTag}
                 onChange={update("thursdayEmailSentTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Shipping paid tag"
                 name="shippingPaidTag"
                 value={field(form, "shippingPaidTag")}
-                details={`Default: ${data.defaults.tags.shippingPaidTag}`}
+                defaultValue={data.defaults.tags.shippingPaidTag}
                 onChange={update("shippingPaidTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Hold for next cycle tag"
                 name="holdForNextCycleTag"
                 value={field(form, "holdForNextCycleTag")}
-                details={`Default: ${data.defaults.tags.holdForNextCycleTag}`}
+                defaultValue={data.defaults.tags.holdForNextCycleTag}
                 onChange={update("holdForNextCycleTag")}
               />
-              <s-text-field
+              <TagChipField
                 label="Pushed to next weekend tag"
                 name="pushedToNextWeekendTag"
                 value={field(form, "pushedToNextWeekendTag")}
-                details={`Default: ${data.defaults.tags.pushedToNextWeekendTag}`}
+                defaultValue={data.defaults.tags.pushedToNextWeekendTag}
                 onChange={update("pushedToNextWeekendTag")}
               />
             </s-stack>
