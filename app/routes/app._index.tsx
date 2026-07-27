@@ -442,7 +442,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
           <s-section heading="Preorders — Awaiting Readiness" padding="base">
             <s-stack direction="block" gap="large">
               {data.preorders.length === 0 ? (
-                <s-banner heading="No preorders yet" tone="warning">
+                <s-banner heading="No preorders yet" tone="info">
                   <s-paragraph>
                     Create a test order in the store to see status actions here.
                   </s-paragraph>
@@ -988,7 +988,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 </s-button>
               </s-button-group>
               {!data.cronConfigured && (
-                <s-banner heading="Scheduler settings incomplete" tone="info">
+                <s-banner heading="Scheduler settings incomplete" tone="warning">
                   <s-paragraph>
                     Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
                     <s-text type="strong">CRON_SHOP</s-text> for automated
