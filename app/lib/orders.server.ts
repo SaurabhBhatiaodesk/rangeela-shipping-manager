@@ -2,7 +2,6 @@ import {
   hasTag,
   isSkirtDeposit,
   normalizeTags,
-  TAGS,
   type StatusAction,
   type StatusEmailAction,
 } from "./tags";
@@ -52,7 +51,8 @@ const ORDER_NODE_FIELDS = `
 async function fetchOrdersByQuery(
   admin: AdminGraphql,
   query: string,
-  first = 50,
+  first: number,
+  skirtDepositTags: { groupTag: string; partialTag: string },
 ): Promise<ShippingOrder[]> {
   const response = await admin.graphql(
     `#graphql
@@ -98,7 +98,11 @@ async function fetchOrdersByQuery(
       customerName: customer?.displayName ?? null,
       shippingCity: shipping?.city ?? null,
       shippingCountryCode: shipping?.countryCodeV2 ?? null,
-      isSkirtDeposit: isSkirtDeposit(tags),
+      isSkirtDeposit: isSkirtDeposit(
+        tags,
+        skirtDepositTags.groupTag,
+        skirtDepositTags.partialTag,
+      ),
       needsShippingPaidAlert: false,
     } satisfies ShippingOrder;
   });
@@ -113,21 +117,26 @@ export async function fetchAwaitingReadinessOrders(
   admin: AdminGraphql,
   workflowTags: PreorderWorkflowTags,
 ): Promise<ShippingOrder[]> {
+  const skirtDepositTags = {
+    groupTag: workflowTags.groupTag,
+    partialTag: workflowTags.partialTag,
+  };
+
   const awaitingQuery = [
     "status:open",
-    `-tag:${TAGS.READY_TO_SHIP}`,
+    `-tag:${workflowTags.readyToShipTag}`,
     `-tag:${workflowTags.arrivedInCanadaTag}`,
-    `-tag:${TAGS.DEPOSIT_FULFILLED}`,
+    `-tag:${workflowTags.depositFulfilledTag}`,
   ].join(" AND ");
 
   const completedQuery = [
     "status:open",
-    `(tag:${workflowTags.arrivedInCanadaTag} OR tag:${TAGS.READY_TO_SHIP})`,
+    `(tag:${workflowTags.arrivedInCanadaTag} OR tag:${workflowTags.readyToShipTag})`,
   ].join(" AND ");
 
   const [awaiting, completed] = await Promise.all([
-    fetchOrdersByQuery(admin, awaitingQuery, 100),
-    fetchOrdersByQuery(admin, completedQuery, 50),
+    fetchOrdersByQuery(admin, awaitingQuery, 100, skirtDepositTags),
+    fetchOrdersByQuery(admin, completedQuery, 50, skirtDepositTags),
   ]);
 
   const awaitingFiltered = awaiting.filter((order) => {
@@ -148,8 +157,9 @@ export async function fetchAwaitingReadinessOrders(
 
   const isComplete = (order: ShippingOrder) =>
     hasTag(order.tags, workflowTags.arrivedInCanadaTag) ||
-    hasTag(order.tags, TAGS.READY_TO_SHIP) ||
-    (order.isSkirtDeposit && hasTag(order.tags, TAGS.DEPOSIT_FULFILLED));
+    hasTag(order.tags, workflowTags.readyToShipTag) ||
+    (order.isSkirtDeposit &&
+      hasTag(order.tags, workflowTags.depositFulfilledTag));
 
   return Array.from(byId.values()).sort((a, b) => {
     const aDone = isComplete(a) ? 1 : 0;
@@ -164,11 +174,18 @@ export async function fetchAwaitingReadinessOrders(
  */
 export async function fetchShippingPaidAlerts(
   admin: AdminGraphql,
+  workflowTags: PreorderWorkflowTags,
 ): Promise<ShippingOrder[]> {
+  const skirtDepositTags = {
+    groupTag: workflowTags.groupTag,
+    partialTag: workflowTags.partialTag,
+  };
+
   const paidOrders = await fetchOrdersByQuery(
     admin,
-    `tag:${TAGS.SHIPPING_PAID}`,
+    `tag:${workflowTags.shippingPaidTag}`,
     100,
+    skirtDepositTags,
   );
 
   const paidEmails = new Set(
@@ -183,11 +200,12 @@ export async function fetchShippingPaidAlerts(
     admin,
     [
       "status:open",
-      `-tag:${TAGS.SHIPPING_PAID}`,
-      `-tag:${TAGS.HOLD_FOR_NEXT_CYCLE}`,
+      `-tag:${workflowTags.shippingPaidTag}`,
+      `-tag:${workflowTags.holdForNextCycleTag}`,
       `(fulfillment_status:unfulfilled OR fulfillment_status:partial)`,
     ].join(" AND "),
     100,
+    skirtDepositTags,
   );
 
   // Latest shipping-paid date per email — alert only for orders placed after that.
@@ -319,19 +337,23 @@ export async function applyStatusAction(
   const { tags } = snapshot;
 
   if (action === "deposit_fulfilled") {
-    if (!isSkirtDeposit(tags)) {
+    if (!isSkirtDeposit(tags, workflowTags.groupTag, workflowTags.partialTag)) {
       return { ok: false, error: "Order is not a skirt deposit (group + partial)" };
     }
-    const result = await addOrderTags(admin, orderId, [TAGS.DEPOSIT_FULFILLED]);
+    const result = await addOrderTags(admin, orderId, [
+      workflowTags.depositFulfilledTag,
+    ]);
     if (!result.ok) return result;
     return { ok: true, message: "Deposit marked fulfilled" };
   }
 
   if (action === "hold_for_next_cycle") {
-    if (hasTag(tags, TAGS.HOLD_FOR_NEXT_CYCLE)) {
+    if (hasTag(tags, workflowTags.holdForNextCycleTag)) {
       return { ok: true, message: "Already held for next Thursday cycle" };
     }
-    const result = await addOrderTags(admin, orderId, [TAGS.HOLD_FOR_NEXT_CYCLE]);
+    const result = await addOrderTags(admin, orderId, [
+      workflowTags.holdForNextCycleTag,
+    ]);
     if (!result.ok) return result;
     return { ok: true, message: "Held for next Thursday cycle" };
   }
@@ -398,13 +420,17 @@ export async function applyStatusAction(
     }
     const tagResult = await addOrderTags(admin, orderId, [
       workflowTags.arrivedInCanadaTag,
-      TAGS.READY_TO_SHIP,
+      workflowTags.readyToShipTag,
     ]);
     if (!tagResult.ok) return tagResult;
     const emailStatus = await sendStatusEmailNow(admin, {
       orderId,
       email: snapshot.email,
-      tagsAfterUpdate: [...tags, workflowTags.arrivedInCanadaTag, TAGS.READY_TO_SHIP],
+      tagsAfterUpdate: [
+        ...tags,
+        workflowTags.arrivedInCanadaTag,
+        workflowTags.readyToShipTag,
+      ],
       statusAction: "arrived_in_canada",
       shop,
       workflowTags,

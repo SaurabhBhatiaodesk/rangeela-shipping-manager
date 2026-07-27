@@ -1,7 +1,8 @@
 import type { AdminGraphql } from "./cycle-shared.server";
 import { graphqlJson } from "./cycle-shared.server";
-import { TAGS, hasTag, normalizeTags } from "./tags";
+import { hasTag, normalizeTags } from "./tags";
 import { voidThursdayDraftForOrder } from "./friday-reset.server";
+import { getShopSettings } from "./klaviyo-settings.server";
 
 function parseLinkedOrderIds(value: unknown): string[] {
   if (typeof value !== "string") return [];
@@ -86,6 +87,7 @@ function normalizeOrderGid(id: string): string | null {
 export async function processShippingPaidTagging(
   admin: AdminGraphql,
   orderPayload: any,
+  shop: string,
 ) {
   const invoiceId =
     String(orderPayload.admin_graphql_api_id || orderPayload.id || "unknown");
@@ -97,6 +99,9 @@ export async function processShippingPaidTagging(
   }
 
   console.log("paid invoice detected:", invoiceId);
+
+  const settings = await getShopSettings(shop);
+  const shippingPaidTag = settings.preorderTags.shippingPaidTag;
 
   const linkedOrderIds = extractLinkedOrderIdsFromPayload(orderPayload);
   if (linkedOrderIds.length === 0) {
@@ -142,16 +147,20 @@ export async function processShippingPaidTagging(
             .map((tag) => tag.trim())
             .filter(Boolean);
 
-      if (tagsArray.includes("shipping-paid")) {
+      if (
+        tagsArray.some(
+          (t: string) => t.toLowerCase() === shippingPaidTag.toLowerCase(),
+        )
+      ) {
         console.log(
-          `skipped tagging order ${linkedId} (already has shipping-paid)`,
+          `skipped tagging order ${linkedId} (already has ${shippingPaidTag})`,
         );
         continue;
       }
 
-      const updatedTags = Array.from(new Set([...tagsArray, "shipping-paid"])).join(
-        ", ",
-      );
+      const updatedTags = Array.from(
+        new Set([...tagsArray, shippingPaidTag]),
+      ).join(", ");
 
       const updateRes: any = await graphqlJson(
         admin,
@@ -194,9 +203,11 @@ export async function processShippingPaidTagging(
 export async function processPushedToNextWeekendVoid(
   admin: AdminGraphql,
   orderPayload: any,
+  shop: string,
 ) {
+  const settings = await getShopSettings(shop);
   const tags = normalizeTags(orderPayload?.tags);
-  if (!hasTag(tags, TAGS.PUSHED_TO_NEXT_WEEKEND)) {
+  if (!hasTag(tags, settings.preorderTags.pushedToNextWeekendTag)) {
     return;
   }
 

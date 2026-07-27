@@ -21,13 +21,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   try {
-    await processShippingPaidTagging(admin, payload);
+    await processShippingPaidTagging(admin, payload, shop);
   } catch (error) {
     console.error(`[orders/updated] shipping-paid tagging failed:`, error);
   }
 
   try {
-    await processPushedToNextWeekendVoid(admin, payload);
+    await processPushedToNextWeekendVoid(admin, payload, shop);
   } catch (error) {
     console.error(`[orders/updated] pushed-to-next-weekend void failed:`, error);
   }

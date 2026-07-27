@@ -13,7 +13,7 @@ async function handle(request: Request) {
     url.searchParams.get("dryRun") === "1" ||
     url.searchParams.get("dry_run") === "1";
 
-  const result = await runFridayReset(auth.admin, { dryRun });
+  const result = await runFridayReset(auth.admin, { dryRun, shop: auth.shop });
   return Response.json(result, { status: result.ok ? 200 : 207 });
 }
 

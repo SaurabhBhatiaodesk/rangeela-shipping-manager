@@ -66,14 +66,27 @@ export function isSaskatoon(order: CycleOrder): boolean {
   return (order.shippingCity || "").trim().toLowerCase() === "saskatoon";
 }
 
+export type CycleGateTags = {
+  holdForNextCycleTag: string;
+  thursdayEmailSentTag: string;
+  shippingPaidTag: string;
+};
+
 /** Eligible unless already tagged — hold-for-next-cycle overrides shipping-paid / thursday-email-sent. */
-export function passesCycleTagGate(tags: string[]): boolean {
+export function passesCycleTagGate(
+  tags: string[],
+  gateTags: CycleGateTags = {
+    holdForNextCycleTag: TAGS.HOLD_FOR_NEXT_CYCLE,
+    thursdayEmailSentTag: TAGS.THURSDAY_EMAIL_SENT,
+    shippingPaidTag: TAGS.SHIPPING_PAID,
+  },
+): boolean {
   const lower = tags.map((t) => t.toLowerCase());
-  const hasHold = lower.includes(TAGS.HOLD_FOR_NEXT_CYCLE.toLowerCase());
+  const hasHold = lower.includes(gateTags.holdForNextCycleTag.toLowerCase());
   if (hasHold) return true;
 
-  if (lower.includes(TAGS.THURSDAY_EMAIL_SENT.toLowerCase())) return false;
-  if (lower.includes(TAGS.SHIPPING_PAID.toLowerCase())) return false;
+  if (lower.includes(gateTags.thursdayEmailSentTag.toLowerCase())) return false;
+  if (lower.includes(gateTags.shippingPaidTag.toLowerCase())) return false;
   return true;
 }
 

@@ -24,7 +24,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
 
   try {
-    await processShippingPaidTagging(admin, orderPayload);
+    await processShippingPaidTagging(admin, orderPayload, shop);
   } catch (error) {
     console.error(`[orders/create] handler error:`, error);
   }

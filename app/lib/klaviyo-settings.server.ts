@@ -26,6 +26,14 @@ export const DEFAULT_PREORDER_TAGS = {
   pieceMadeEmailSentTag: TAGS.PIECE_MADE_EMAIL_SENT,
   leavingEmailSentTag: TAGS.LEAVING_EMAIL_SENT,
   arrivedEmailSentTag: TAGS.ARRIVED_EMAIL_SENT,
+  readyToShipTag: TAGS.READY_TO_SHIP,
+  groupTag: TAGS.GROUP,
+  partialTag: TAGS.PARTIAL,
+  depositFulfilledTag: TAGS.DEPOSIT_FULFILLED,
+  thursdayEmailSentTag: TAGS.THURSDAY_EMAIL_SENT,
+  shippingPaidTag: TAGS.SHIPPING_PAID,
+  holdForNextCycleTag: TAGS.HOLD_FOR_NEXT_CYCLE,
+  pushedToNextWeekendTag: TAGS.PUSHED_TO_NEXT_WEEKEND,
 } as const;
 
 export type KlaviyoTemplateIds = {
@@ -50,6 +58,14 @@ export type PreorderWorkflowTags = {
   pieceMadeEmailSentTag: string;
   leavingEmailSentTag: string;
   arrivedEmailSentTag: string;
+  readyToShipTag: string;
+  groupTag: string;
+  partialTag: string;
+  depositFulfilledTag: string;
+  thursdayEmailSentTag: string;
+  shippingPaidTag: string;
+  holdForNextCycleTag: string;
+  pushedToNextWeekendTag: string;
 };
 
 export type ShopAppSettings = {
@@ -174,6 +190,35 @@ export async function getShopSettings(shop: string): Promise<ShopAppSettings> {
         row?.arrivedEmailSentTag,
         DEFAULT_PREORDER_TAGS.arrivedEmailSentTag,
       ),
+      readyToShipTag: resolveTag(
+        row?.readyToShipTag,
+        DEFAULT_PREORDER_TAGS.readyToShipTag,
+      ),
+      groupTag: resolveTag(row?.groupTag, DEFAULT_PREORDER_TAGS.groupTag),
+      partialTag: resolveTag(
+        row?.partialTag,
+        DEFAULT_PREORDER_TAGS.partialTag,
+      ),
+      depositFulfilledTag: resolveTag(
+        row?.depositFulfilledTag,
+        DEFAULT_PREORDER_TAGS.depositFulfilledTag,
+      ),
+      thursdayEmailSentTag: resolveTag(
+        row?.thursdayEmailSentTag,
+        DEFAULT_PREORDER_TAGS.thursdayEmailSentTag,
+      ),
+      shippingPaidTag: resolveTag(
+        row?.shippingPaidTag,
+        DEFAULT_PREORDER_TAGS.shippingPaidTag,
+      ),
+      holdForNextCycleTag: resolveTag(
+        row?.holdForNextCycleTag,
+        DEFAULT_PREORDER_TAGS.holdForNextCycleTag,
+      ),
+      pushedToNextWeekendTag: resolveTag(
+        row?.pushedToNextWeekendTag,
+        DEFAULT_PREORDER_TAGS.pushedToNextWeekendTag,
+      ),
     },
   };
 }
@@ -211,6 +256,14 @@ export async function saveShopSettings(
       pieceMadeEmailSentTag: trimOrEmpty(input.pieceMadeEmailSentTag),
       leavingEmailSentTag: trimOrEmpty(input.leavingEmailSentTag),
       arrivedEmailSentTag: trimOrEmpty(input.arrivedEmailSentTag),
+      readyToShipTag: trimOrEmpty(input.readyToShipTag),
+      groupTag: trimOrEmpty(input.groupTag),
+      partialTag: trimOrEmpty(input.partialTag),
+      depositFulfilledTag: trimOrEmpty(input.depositFulfilledTag),
+      thursdayEmailSentTag: trimOrEmpty(input.thursdayEmailSentTag),
+      shippingPaidTag: trimOrEmpty(input.shippingPaidTag),
+      holdForNextCycleTag: trimOrEmpty(input.holdForNextCycleTag),
+      pushedToNextWeekendTag: trimOrEmpty(input.pushedToNextWeekendTag),
     },
     update: {
       klaviyoApiKey: trimOrEmpty(input.klaviyoApiKey),
@@ -231,6 +284,14 @@ export async function saveShopSettings(
       pieceMadeEmailSentTag: trimOrEmpty(input.pieceMadeEmailSentTag),
       leavingEmailSentTag: trimOrEmpty(input.leavingEmailSentTag),
       arrivedEmailSentTag: trimOrEmpty(input.arrivedEmailSentTag),
+      readyToShipTag: trimOrEmpty(input.readyToShipTag),
+      groupTag: trimOrEmpty(input.groupTag),
+      partialTag: trimOrEmpty(input.partialTag),
+      depositFulfilledTag: trimOrEmpty(input.depositFulfilledTag),
+      thursdayEmailSentTag: trimOrEmpty(input.thursdayEmailSentTag),
+      shippingPaidTag: trimOrEmpty(input.shippingPaidTag),
+      holdForNextCycleTag: trimOrEmpty(input.holdForNextCycleTag),
+      pushedToNextWeekendTag: trimOrEmpty(input.pushedToNextWeekendTag),
     },
   });
 }
@@ -270,6 +331,16 @@ export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
     ),
     leavingEmailSentTag: String(formData.get("leavingEmailSentTag") ?? ""),
     arrivedEmailSentTag: String(formData.get("arrivedEmailSentTag") ?? ""),
+    readyToShipTag: String(formData.get("readyToShipTag") ?? ""),
+    groupTag: String(formData.get("groupTag") ?? ""),
+    partialTag: String(formData.get("partialTag") ?? ""),
+    depositFulfilledTag: String(formData.get("depositFulfilledTag") ?? ""),
+    thursdayEmailSentTag: String(formData.get("thursdayEmailSentTag") ?? ""),
+    shippingPaidTag: String(formData.get("shippingPaidTag") ?? ""),
+    holdForNextCycleTag: String(formData.get("holdForNextCycleTag") ?? ""),
+    pushedToNextWeekendTag: String(
+      formData.get("pushedToNextWeekendTag") ?? "",
+    ),
   };
 }
 

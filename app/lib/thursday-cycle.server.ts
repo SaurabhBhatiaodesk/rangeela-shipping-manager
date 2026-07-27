@@ -1,10 +1,11 @@
-import { TAGS, hasTag, normalizeTags } from "./tags";
+import { hasTag, normalizeTags } from "./tags";
 import {
   shippingAmountForItemCount,
   SHIPPING_CURRENCY,
 } from "./shipping-rates";
 import {
   type AdminGraphql,
+  type CycleGateTags,
   type CycleOrder,
   type LineItemInfo,
   countCanadaDispatchItems,
@@ -15,7 +16,10 @@ import {
   passesCycleTagGate,
 } from "./cycle-shared.server";
 import { sendThursdayInvoiceEmail } from "./klaviyo.server";
-import { getShopSettings } from "./klaviyo-settings.server";
+import {
+  getShopSettings,
+  type PreorderWorkflowTags,
+} from "./klaviyo-settings.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -143,10 +147,12 @@ async function fetchCycleOrders(
 function isPool1Preorder(
   order: CycleOrder,
   arrivedInCanadaTag: string,
+  readyToShipTag: string,
+  gateTags: CycleGateTags,
 ): boolean {
   if (!hasTag(order.tags, arrivedInCanadaTag)) return false;
-  if (!hasTag(order.tags, TAGS.READY_TO_SHIP)) return false;
-  if (!passesCycleTagGate(order.tags)) return false;
+  if (!hasTag(order.tags, readyToShipTag)) return false;
+  if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isCanadaOrUsShipping(order)) return false;
   if (hasIndiaItems(order.lineItems) && countCanadaDispatchItems(order.lineItems) === 0) {
@@ -156,12 +162,12 @@ function isPool1Preorder(
   return true;
 }
 
-function isPool2Rtw(order: CycleOrder): boolean {
+function isPool2Rtw(order: CycleOrder, gateTags: CycleGateTags): boolean {
   const financial = (order.displayFinancialStatus || "").toUpperCase();
   const fulfillment = (order.displayFulfillmentStatus || "").toUpperCase();
   if (financial !== "PAID") return false;
   if (fulfillment === "FULFILLED") return false;
-  if (!passesCycleTagGate(order.tags)) return false;
+  if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isCanadaOrUsShipping(order)) return false;
 
@@ -395,9 +401,15 @@ export async function runThursdayCycle(
 ): Promise<ThursdayCycleResult> {
   const dryRun = Boolean(options.dryRun);
   const settings = await getShopSettings(options.shop);
-  const arrivedInCanadaTag = settings.preorderTags.arrivedInCanadaTag;
+  const workflowTags: PreorderWorkflowTags = settings.preorderTags;
+  const arrivedInCanadaTag = workflowTags.arrivedInCanadaTag;
   const thursdayTemplateId = settings.klaviyoTemplates.thursdayTemplateId;
   const klaviyoApiKey = settings.klaviyoApiKey;
+  const gateTags: CycleGateTags = {
+    holdForNextCycleTag: workflowTags.holdForNextCycleTag,
+    thursdayEmailSentTag: workflowTags.thursdayEmailSentTag,
+    shippingPaidTag: workflowTags.shippingPaidTag,
+  };
 
   const [pool1Raw, pool2Raw] = await Promise.all([
     fetchCycleOrders(
@@ -405,7 +417,7 @@ export async function runThursdayCycle(
       [
         "status:open",
         `tag:${arrivedInCanadaTag}`,
-        `tag:${TAGS.READY_TO_SHIP}`,
+        `tag:${workflowTags.readyToShipTag}`,
       ].join(" AND "),
     ),
     fetchCycleOrders(
@@ -419,9 +431,14 @@ export async function runThursdayCycle(
   ]);
 
   const pool1 = pool1Raw.filter((order) =>
-    isPool1Preorder(order, arrivedInCanadaTag),
+    isPool1Preorder(
+      order,
+      arrivedInCanadaTag,
+      workflowTags.readyToShipTag,
+      gateTags,
+    ),
   );
-  const pool2 = pool2Raw.filter(isPool2Rtw);
+  const pool2 = pool2Raw.filter((order) => isPool2Rtw(order, gateTags));
 
   const byId = new Map<string, CycleOrder>();
   for (const order of [...pool1, ...pool2]) {
@@ -537,15 +554,15 @@ export async function runThursdayCycle(
       }
 
       for (const order of orders) {
-        await addTags(admin, order.id, [TAGS.THURSDAY_EMAIL_SENT]);
+        await addTags(admin, order.id, [workflowTags.thursdayEmailSentTag]);
         await setDraftMetafield(admin, order.id, draft.id);
 
         const toRemove: string[] = [];
-        if (hasTag(order.tags, TAGS.PUSHED_TO_NEXT_WEEKEND)) {
-          toRemove.push(TAGS.PUSHED_TO_NEXT_WEEKEND);
+        if (hasTag(order.tags, workflowTags.pushedToNextWeekendTag)) {
+          toRemove.push(workflowTags.pushedToNextWeekendTag);
         }
-        if (hasTag(order.tags, TAGS.HOLD_FOR_NEXT_CYCLE)) {
-          toRemove.push(TAGS.HOLD_FOR_NEXT_CYCLE);
+        if (hasTag(order.tags, workflowTags.holdForNextCycleTag)) {
+          toRemove.push(workflowTags.holdForNextCycleTag);
         }
         if (toRemove.length) {
           await removeTags(admin, order.id, toRemove);

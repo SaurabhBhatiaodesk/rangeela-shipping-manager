@@ -27,7 +27,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
   import { runFridayReset } from "../lib/friday-reset.server";
   import { runStatusEmailPoller } from "../lib/status-emails.server";
   import type { StatusAction } from "../lib/tags";
-  import { hasTag, TAGS } from "../lib/tags";
+  import { hasTag } from "../lib/tags";
   import { authenticate } from "../shopify.server";
   import {
     getShopSettings,
@@ -59,7 +59,10 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
     try {
       if (tab === "alerts") {
-        const alerts = await fetchShippingPaidAlerts(admin);
+        const alerts = await fetchShippingPaidAlerts(
+          admin,
+          shopSettings.preorderTags,
+        );
         return { ...base, tab, preorders: [], alerts, thursdayPreview: null };
       }
 
@@ -134,7 +137,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
     if (intent === "friday_run") {
       const dryRun = formData.get("dryRun") === "1";
-      return runFridayReset(admin, { dryRun });
+      return runFridayReset(admin, { dryRun, shop: session.shop });
     }
 
     if (intent === "status_emails_run") {
@@ -478,7 +481,10 @@ import { useEffect, useRef, useState, startTransition } from "react";
                         </s-table-cell>
                         <s-table-cell>
                           {order.isSkirtDeposit ? (
-                            hasTag(order.tags, TAGS.DEPOSIT_FULFILLED) ? (
+                            hasTag(
+                              order.tags,
+                              data.preorderTags.depositFulfilledTag,
+                            ) ? (
                               <s-badge
                                 tone="success"
                                 color="strong"
@@ -494,7 +500,11 @@ import { useEffect, useRef, useState, startTransition } from "react";
                           ) : hasTag(
                               order.tags,
                               data.preorderTags.arrivedInCanadaTag,
-                            ) || hasTag(order.tags, TAGS.READY_TO_SHIP) ? (
+                            ) ||
+                            hasTag(
+                              order.tags,
+                              data.preorderTags.readyToShipTag,
+                            ) ? (
                             <s-badge
                               tone="success"
                               color="strong"

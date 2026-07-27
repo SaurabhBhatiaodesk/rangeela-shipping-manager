@@ -64,6 +64,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       pieceMadeEmailSentTag: "",
       leavingEmailSentTag: "",
       arrivedEmailSentTag: "",
+      readyToShipTag: "",
+      groupTag: "",
+      partialTag: "",
+      depositFulfilledTag: "",
+      thursdayEmailSentTag: "",
+      shippingPaidTag: "",
+      holdForNextCycleTag: "",
+      pushedToNextWeekendTag: "",
     });
     const settings = await getShopSettings(session.shop);
     return {
@@ -192,6 +200,76 @@ export default function SettingsPage() {
                 value={field(form, "arrivedEmailSentTag")}
                 details={`Default: ${data.defaults.tags.arrivedEmailSentTag}`}
                 onChange={update("arrivedEmailSentTag")}
+              />
+            </s-stack>
+          </s-section>
+
+          <s-section heading="Advanced workflow tags" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-banner tone="warning" heading="Change with care">
+                <s-paragraph>
+                  These tags drive the Thursday invoice pool, the Friday
+                  reset, and the shipping-paid alert. Changing one only
+                  affects new activity — it does not rename the tag on
+                  existing orders in Shopify, so mismatched old/new tags can
+                  hide orders from these tabs until you re-tag them.
+                </s-paragraph>
+              </s-banner>
+              <s-text-field
+                label="Ready to ship tag"
+                name="readyToShipTag"
+                value={field(form, "readyToShipTag")}
+                details={`Default: ${data.defaults.tags.readyToShipTag}`}
+                onChange={update("readyToShipTag")}
+              />
+              <s-text-field
+                label="Skirt deposit — group tag"
+                name="groupTag"
+                value={field(form, "groupTag")}
+                details={`Default: ${data.defaults.tags.groupTag}`}
+                onChange={update("groupTag")}
+              />
+              <s-text-field
+                label="Skirt deposit — partial tag"
+                name="partialTag"
+                value={field(form, "partialTag")}
+                details={`Default: ${data.defaults.tags.partialTag}`}
+                onChange={update("partialTag")}
+              />
+              <s-text-field
+                label="Deposit fulfilled tag"
+                name="depositFulfilledTag"
+                value={field(form, "depositFulfilledTag")}
+                details={`Default: ${data.defaults.tags.depositFulfilledTag}`}
+                onChange={update("depositFulfilledTag")}
+              />
+              <s-text-field
+                label="Thursday email-sent tag"
+                name="thursdayEmailSentTag"
+                value={field(form, "thursdayEmailSentTag")}
+                details={`Default: ${data.defaults.tags.thursdayEmailSentTag}`}
+                onChange={update("thursdayEmailSentTag")}
+              />
+              <s-text-field
+                label="Shipping paid tag"
+                name="shippingPaidTag"
+                value={field(form, "shippingPaidTag")}
+                details={`Default: ${data.defaults.tags.shippingPaidTag}`}
+                onChange={update("shippingPaidTag")}
+              />
+              <s-text-field
+                label="Hold for next cycle tag"
+                name="holdForNextCycleTag"
+                value={field(form, "holdForNextCycleTag")}
+                details={`Default: ${data.defaults.tags.holdForNextCycleTag}`}
+                onChange={update("holdForNextCycleTag")}
+              />
+              <s-text-field
+                label="Pushed to next weekend tag"
+                name="pushedToNextWeekendTag"
+                value={field(form, "pushedToNextWeekendTag")}
+                details={`Default: ${data.defaults.tags.pushedToNextWeekendTag}`}
+                onChange={update("pushedToNextWeekendTag")}
               />
             </s-stack>
           </s-section>

@@ -1,8 +1,9 @@
-import { TAGS, hasTag, normalizeTags } from "./tags";
+import { hasTag, normalizeTags } from "./tags";
 import {
   type AdminGraphql,
   graphqlJson,
 } from "./cycle-shared.server";
+import { getShopSettings } from "./klaviyo-settings.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -178,12 +179,17 @@ export async function voidThursdayDraftForOrder(
  */
 export async function runFridayReset(
   admin: AdminGraphql,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; shop: string },
 ): Promise<FridayResetResult> {
   const dryRun = Boolean(options.dryRun);
   const errors: string[] = [];
   let ordersProcessed = 0;
   let draftsDeleted = 0;
+
+  const settings = await getShopSettings(options.shop);
+  const thursdayEmailSentTag = settings.preorderTags.thursdayEmailSentTag;
+  const shippingPaidTag = settings.preorderTags.shippingPaidTag;
+  const pushedToNextWeekendTag = settings.preorderTags.pushedToNextWeekendTag;
 
   const json = await graphqlJson(
     admin,
@@ -205,7 +211,7 @@ export async function runFridayReset(
       }`,
     {
       first: 100,
-      query: `tag:${TAGS.THURSDAY_EMAIL_SENT} AND -tag:${TAGS.SHIPPING_PAID}`,
+      query: `tag:${thursdayEmailSentTag} AND -tag:${shippingPaidTag}`,
     },
   );
 
@@ -221,8 +227,8 @@ export async function runFridayReset(
     };
 
     const tags = normalizeTags(order.tags);
-    if (!hasTag(tags, TAGS.THURSDAY_EMAIL_SENT)) continue;
-    if (hasTag(tags, TAGS.SHIPPING_PAID)) continue;
+    if (!hasTag(tags, thursdayEmailSentTag)) continue;
+    if (hasTag(tags, shippingPaidTag)) continue;
 
     ordersProcessed += 1;
     const draftId = order.metafield?.value;
@@ -241,10 +247,10 @@ export async function runFridayReset(
         }
       }
 
-      const removed = await removeTag(admin, order.id, TAGS.THURSDAY_EMAIL_SENT);
+      const removed = await removeTag(admin, order.id, thursdayEmailSentTag);
       if (!removed.ok) errors.push(`${order.name}: ${removed.error}`);
 
-      const added = await addTag(admin, order.id, TAGS.PUSHED_TO_NEXT_WEEKEND);
+      const added = await addTag(admin, order.id, pushedToNextWeekendTag);
       if (!added.ok) errors.push(`${order.name}: ${added.error}`);
 
       if (order.metafield?.id) {

@@ -58,8 +58,12 @@ export function hasTag(tags: string[], tag: string): boolean {
   return tags.some((t) => t.toLowerCase() === tag.toLowerCase());
 }
 
-export function isSkirtDeposit(tags: string[]): boolean {
-  return hasTag(tags, TAGS.GROUP) && hasTag(tags, TAGS.PARTIAL);
+export function isSkirtDeposit(
+  tags: string[],
+  groupTag: string = TAGS.GROUP,
+  partialTag: string = TAGS.PARTIAL,
+): boolean {
+  return hasTag(tags, groupTag) && hasTag(tags, partialTag);
 }
 
 export function normalizeTags(tags: string[] | string | null | undefined): string[] {

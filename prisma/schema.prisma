@@ -49,5 +49,13 @@ model ShopKlaviyoSettings {
   pieceMadeEmailSentTag      String   @default("")
   leavingEmailSentTag        String   @default("")
   arrivedEmailSentTag        String   @default("")
+  readyToShipTag             String   @default("")
+  groupTag                   String   @default("")
+  partialTag                 String   @default("")
+  depositFulfilledTag        String   @default("")
+  thursdayEmailSentTag       String   @default("")
+  shippingPaidTag            String   @default("")
+  holdForNextCycleTag        String   @default("")
+  pushedToNextWeekendTag     String   @default("")
   updatedAt                  DateTime @updatedAt
 }

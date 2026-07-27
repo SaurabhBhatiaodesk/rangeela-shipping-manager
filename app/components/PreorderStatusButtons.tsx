@@ -1,4 +1,4 @@
-import { hasTag, TAGS } from "../lib/tags";
+import { hasTag } from "../lib/tags";
 import type { ShippingOrder } from "../lib/orders.server";
 import type { StatusAction } from "../lib/tags";
 import type { PreorderWorkflowLabels, PreorderWorkflowTags } from "../lib/klaviyo-settings.server";
@@ -30,7 +30,7 @@ export function PreorderStatusButtons({
   const busy = busyAction?.startsWith(id) ?? false;
 
   if (isSkirtDeposit) {
-    const done = hasTag(tags, TAGS.DEPOSIT_FULFILLED);
+    const done = hasTag(tags, workflowTags.depositFulfilledTag);
     if (done) {
       return <DoneBadge>{labels.depositFulfilledDone}</DoneBadge>;
     }
