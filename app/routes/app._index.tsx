@@ -387,21 +387,19 @@ import { useEffect, useRef, useState, startTransition } from "react";
         </s-banner>
 
         {tab === "preorders" && (
-          <s-banner heading="Status progress" tone="info">
-            <s-stack direction="block" gap="base">
-              <s-paragraph>
-                Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
-                {data.preorderLabels.leavingForCanada} →{" "}
-                {data.preorderLabels.arrivedInCanada}. Completed steps show as
-                green success badges. Skirt deposits use{" "}
-                {data.preorderLabels.depositFulfilled}.
-              </s-paragraph>
-              <s-link href="/app/settings">
-                <s-button variant="secondary">
-                  Edit button labels &amp; order tags
-                </s-button>
-              </s-link>
-            </s-stack>
+          <s-banner heading="Preorder status workflow" tone="success">
+            Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
+            {data.preorderLabels.leavingForCanada} →{" "}
+            {data.preorderLabels.arrivedInCanada}. Completed steps show as
+            green success badges. Skirt deposits use{" "}
+            {data.preorderLabels.depositFulfilled}.
+            <s-button
+              slot="secondary-actions"
+              variant="secondary"
+              href="/app/settings"
+            >
+              Edit button labels &amp; order tags
+            </s-button>
           </s-banner>
         )}
 
