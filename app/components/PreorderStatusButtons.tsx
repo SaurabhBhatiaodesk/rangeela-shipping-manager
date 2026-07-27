@@ -11,9 +11,15 @@ type Props = {
   workflowTags: PreorderWorkflowTags;
 };
 
-function DoneBadge({ children }: { children: string }) {
+function DoneBadge({
+  children,
+  tone = "success",
+}: {
+  children: string;
+  tone?: "info" | "caution" | "success";
+}) {
   return (
-    <s-badge tone="success" color="strong" icon="check-circle">
+    <s-badge tone={tone} color="strong" icon="check-circle">
       {children}
     </s-badge>
   );
@@ -53,7 +59,7 @@ export function PreorderStatusButtons({
   return (
     <s-stack direction="inline" gap="small-200" alignItems="center">
       {pieceMade ? (
-        <DoneBadge>{labels.pieceMade}</DoneBadge>
+        <DoneBadge tone="info">{labels.pieceMade}</DoneBadge>
       ) : (
         <s-button
           variant="primary"
@@ -66,7 +72,7 @@ export function PreorderStatusButtons({
       )}
 
       {leaving ? (
-        <DoneBadge>{labels.leavingForCanada}</DoneBadge>
+        <DoneBadge tone="caution">{labels.leavingForCanada}</DoneBadge>
       ) : (
         <s-button
           variant={pieceMade ? "primary" : "tertiary"}
