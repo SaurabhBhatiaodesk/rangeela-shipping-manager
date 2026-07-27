@@ -16,6 +16,153 @@ export type FridayResetResult = {
   message: string;
 };
 
+type MutationOutcome = { ok: true } | { ok: false; error: string };
+
+function userErrorsToMessage(
+  userErrors: Array<{ message: string }> | undefined,
+): string | null {
+  if (!userErrors || userErrors.length === 0) return null;
+  return userErrors.map((e) => e.message).join(", ");
+}
+
+async function deleteDraftOrder(
+  admin: AdminGraphql,
+  draftId: string,
+): Promise<MutationOutcome> {
+  const del = await graphqlJson(
+    admin,
+    `#graphql
+      mutation DeleteThursdayDraft($input: DraftOrderDeleteInput!) {
+        draftOrderDelete(input: $input) {
+          deletedId
+          userErrors { message }
+        }
+      }`,
+    { input: { id: draftId } },
+  );
+  const error = userErrorsToMessage(del.data?.draftOrderDelete?.userErrors);
+  if (error) return { ok: false, error: `draft delete: ${error}` };
+  return { ok: true };
+}
+
+async function removeTag(
+  admin: AdminGraphql,
+  orderId: string,
+  tag: string,
+): Promise<MutationOutcome> {
+  const res = await graphqlJson(
+    admin,
+    `#graphql
+      mutation FridayRemoveTag($id: ID!, $tags: [String!]!) {
+        tagsRemove(id: $id, tags: $tags) {
+          userErrors { message }
+        }
+      }`,
+    { id: orderId, tags: [tag] },
+  );
+  const error = userErrorsToMessage(res.data?.tagsRemove?.userErrors);
+  if (error) return { ok: false, error: `remove tag "${tag}": ${error}` };
+  return { ok: true };
+}
+
+async function addTag(
+  admin: AdminGraphql,
+  orderId: string,
+  tag: string,
+): Promise<MutationOutcome> {
+  const res = await graphqlJson(
+    admin,
+    `#graphql
+      mutation FridayAddTag($id: ID!, $tags: [String!]!) {
+        tagsAdd(id: $id, tags: $tags) {
+          userErrors { message }
+        }
+      }`,
+    { id: orderId, tags: [tag] },
+  );
+  const error = userErrorsToMessage(res.data?.tagsAdd?.userErrors);
+  if (error) return { ok: false, error: `add tag "${tag}": ${error}` };
+  return { ok: true };
+}
+
+async function clearThursdayDraftMetafield(
+  admin: AdminGraphql,
+  orderId: string,
+): Promise<MutationOutcome> {
+  const res = await graphqlJson(
+    admin,
+    `#graphql
+      mutation ClearThursdayDraftMetafield($metafields: [MetafieldIdentifierInput!]!) {
+        metafieldsDelete(metafields: $metafields) {
+          deletedMetafields { key }
+          userErrors { message }
+        }
+      }`,
+    {
+      metafields: [
+        { ownerId: orderId, namespace: META_NAMESPACE, key: META_DRAFT_KEY },
+      ],
+    },
+  );
+  const error = userErrorsToMessage(res.data?.metafieldsDelete?.userErrors);
+  if (error) return { ok: false, error: `clear draft metafield: ${error}` };
+  return { ok: true };
+}
+
+async function fetchOrderDraftMetafield(
+  admin: AdminGraphql,
+  orderId: string,
+): Promise<{ id?: string; value?: string } | null> {
+  const json = await graphqlJson(
+    admin,
+    `#graphql
+      query OrderThursdayDraftMetafield($id: ID!) {
+        order(id: $id) {
+          metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
+            id
+            value
+          }
+        }
+      }`,
+    { id: orderId },
+  );
+  return json.data?.order?.metafield ?? null;
+}
+
+/**
+ * Voids (deletes) the Thursday draft order linked to `orderId`, if one is
+ * still linked via the thursday_draft_id metafield. Idempotent — a no-op
+ * (ok: true, voided: false) if there is no linked draft (already cleared).
+ *
+ * Shared by:
+ * - the bulk Friday backup sweep (runFridayReset)
+ * - the orders/updated webhook, which calls this when Shopify Flow adds
+ *   `pushed-to-next-weekend` directly (Flow flips the tags; the app voids
+ *   the draft since Flow cannot call the Admin API draft mutation itself).
+ */
+export async function voidThursdayDraftForOrder(
+  admin: AdminGraphql,
+  orderId: string,
+): Promise<{ ok: boolean; voided: boolean; error?: string }> {
+  const metafield = await fetchOrderDraftMetafield(admin, orderId);
+  const draftId = metafield?.value;
+  if (!draftId) {
+    return { ok: true, voided: false };
+  }
+
+  const del = await deleteDraftOrder(admin, draftId);
+  if (!del.ok) {
+    return { ok: false, voided: false, error: del.error };
+  }
+
+  const cleared = await clearThursdayDraftMetafield(admin, orderId);
+  if (!cleared.ok) {
+    return { ok: false, voided: true, error: cleared.error };
+  }
+
+  return { ok: true, voided: true };
+}
+
 /**
  * Friday backup reset (primary path = Shopify Flow tags + orders/updated void).
  *
@@ -26,7 +173,8 @@ export type FridayResetResult = {
  * - clear thursday draft metafield
  *
  * Note: adding pushed-to-next-weekend also triggers orders/updated, which voids
- * the draft if metafield still present — safe if draft already deleted here.
+ * the draft if metafield still present — safe if draft already deleted here
+ * (voidThursdayDraftForOrder is idempotent).
  */
 export async function runFridayReset(
   admin: AdminGraphql,
@@ -83,71 +231,25 @@ export async function runFridayReset(
 
     try {
       if (draftId && !deletedDrafts.has(draftId)) {
-        const del = await graphqlJson(
-          admin,
-          `#graphql
-            mutation DeleteThursdayDraft($input: DraftOrderDeleteInput!) {
-              draftOrderDelete(input: $input) {
-                deletedId
-                userErrors { message }
-              }
-            }`,
-          { input: { id: draftId } },
-        );
-        const userErrors = del.data?.draftOrderDelete?.userErrors ?? [];
-        if (userErrors.length) {
-          // Draft may already be gone — continue tagging
-          errors.push(
-            `${order.name}: draft ${userErrors.map((e: { message: string }) => e.message).join(", ")}`,
-          );
+        const del = await deleteDraftOrder(admin, draftId);
+        if (!del.ok) {
+          // Draft may already be gone — record it but continue tagging.
+          errors.push(`${order.name}: ${del.error}`);
         } else {
           draftsDeleted += 1;
           deletedDrafts.add(draftId);
         }
       }
 
-      await graphqlJson(
-        admin,
-        `#graphql
-          mutation FridayRemoveThursdayTag($id: ID!, $tags: [String!]!) {
-            tagsRemove(id: $id, tags: $tags) {
-              userErrors { message }
-            }
-          }`,
-        { id: order.id, tags: [TAGS.THURSDAY_EMAIL_SENT] },
-      );
+      const removed = await removeTag(admin, order.id, TAGS.THURSDAY_EMAIL_SENT);
+      if (!removed.ok) errors.push(`${order.name}: ${removed.error}`);
 
-      await graphqlJson(
-        admin,
-        `#graphql
-          mutation FridayAddPushedTag($id: ID!, $tags: [String!]!) {
-            tagsAdd(id: $id, tags: $tags) {
-              userErrors { message }
-            }
-          }`,
-        { id: order.id, tags: [TAGS.PUSHED_TO_NEXT_WEEKEND] },
-      );
+      const added = await addTag(admin, order.id, TAGS.PUSHED_TO_NEXT_WEEKEND);
+      if (!added.ok) errors.push(`${order.name}: ${added.error}`);
 
       if (order.metafield?.id) {
-        await graphqlJson(
-          admin,
-          `#graphql
-            mutation ClearThursdayDraftMetafield($metafields: [MetafieldIdentifierInput!]!) {
-              metafieldsDelete(metafields: $metafields) {
-                deletedMetafields { key }
-                userErrors { message }
-              }
-            }`,
-          {
-            metafields: [
-              {
-                ownerId: order.id,
-                namespace: META_NAMESPACE,
-                key: META_DRAFT_KEY,
-              },
-            ],
-          },
-        );
+        const cleared = await clearThursdayDraftMetafield(admin, order.id);
+        if (!cleared.ok) errors.push(`${order.name}: ${cleared.error}`);
       }
     } catch (error) {
       errors.push(
@@ -156,14 +258,23 @@ export async function runFridayReset(
     }
   }
 
+  const summary = dryRun
+    ? `Dry run: ${ordersProcessed} unpaid thursday order(s) would reset`
+    : `Friday reset: ${ordersProcessed} order(s), ${draftsDeleted} draft(s) deleted`;
+
+  const message =
+    errors.length > 0
+      ? `${summary} — ${errors.length} issue(s): ${errors.slice(0, 3).join("; ")}${
+          errors.length > 3 ? `; +${errors.length - 3} more` : ""
+        }`
+      : summary;
+
   return {
     ok: errors.length === 0,
     dryRun,
     ordersProcessed,
     draftsDeleted: dryRun ? 0 : draftsDeleted,
     errors,
-    message: dryRun
-      ? `Dry run: ${ordersProcessed} unpaid thursday order(s) would reset`
-      : `Friday reset: ${ordersProcessed} order(s), ${draftsDeleted} draft(s) deleted`,
+    message,
   };
 }

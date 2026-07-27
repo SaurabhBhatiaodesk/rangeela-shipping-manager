@@ -4,11 +4,13 @@ import {
   normalizeTags,
   TAGS,
   type StatusAction,
+  type StatusEmailAction,
 } from "./tags";
 import type {
   PreorderWorkflowLabels,
   PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
+import { sendStatusEmailIfNeeded } from "./send-status-email.server";
 
 export type ShippingOrder = {
   id: string;
@@ -273,6 +275,31 @@ async function getOrderSnapshot(
   };
 }
 
+async function sendStatusEmailNow(
+  admin: AdminGraphql,
+  options: {
+    orderId: string;
+    email: string | null;
+    tagsAfterUpdate: string[];
+    statusAction: StatusEmailAction;
+    shop: string;
+    workflowTags: PreorderWorkflowTags;
+  },
+): Promise<string> {
+  const result = await sendStatusEmailIfNeeded(admin, {
+    orderId: options.orderId,
+    email: options.email,
+    tags: options.tagsAfterUpdate,
+    statusAction: options.statusAction,
+    shop: options.shop,
+    workflowTags: options.workflowTags,
+  });
+
+  if (!result.ok) return `email failed: ${result.error}`;
+  if (result.skipped) return "email already sent or unavailable";
+  return "Klaviyo email sent";
+}
+
 export async function applyStatusAction(
   admin: AdminGraphql,
   orderId: string,
@@ -280,9 +307,10 @@ export async function applyStatusAction(
   options: {
     workflowTags: PreorderWorkflowTags;
     labels: PreorderWorkflowLabels;
+    shop: string;
   },
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const { workflowTags, labels } = options;
+  const { workflowTags, labels, shop } = options;
   const snapshot = await getOrderSnapshot(admin, orderId);
   if (!snapshot) {
     return { ok: false, error: "Order not found" };
@@ -300,6 +328,9 @@ export async function applyStatusAction(
   }
 
   if (action === "hold_for_next_cycle") {
+    if (hasTag(tags, TAGS.HOLD_FOR_NEXT_CYCLE)) {
+      return { ok: true, message: "Already held for next Thursday cycle" };
+    }
     const result = await addOrderTags(admin, orderId, [TAGS.HOLD_FOR_NEXT_CYCLE]);
     if (!result.ok) return result;
     return { ok: true, message: "Held for next Thursday cycle" };
@@ -313,9 +344,17 @@ export async function applyStatusAction(
       workflowTags.pieceMadeTag,
     ]);
     if (!tagResult.ok) return tagResult;
+    const emailStatus = await sendStatusEmailNow(admin, {
+      orderId,
+      email: snapshot.email,
+      tagsAfterUpdate: [...tags, workflowTags.pieceMadeTag],
+      statusAction: "piece_made",
+      shop,
+      workflowTags,
+    });
     return {
       ok: true,
-      message: `${labels.pieceMade} tagged (Klaviyo email via orders/updated webhook)`,
+      message: `${labels.pieceMade} tagged (${emailStatus})`,
     };
   }
 
@@ -333,9 +372,17 @@ export async function applyStatusAction(
       workflowTags.leavingForCanadaTag,
     ]);
     if (!tagResult.ok) return tagResult;
+    const emailStatus = await sendStatusEmailNow(admin, {
+      orderId,
+      email: snapshot.email,
+      tagsAfterUpdate: [...tags, workflowTags.leavingForCanadaTag],
+      statusAction: "leaving_for_canada",
+      shop,
+      workflowTags,
+    });
     return {
       ok: true,
-      message: `${labels.leavingForCanada} tagged (Klaviyo email via orders/updated webhook)`,
+      message: `${labels.leavingForCanada} tagged (${emailStatus})`,
     };
   }
 
@@ -354,9 +401,17 @@ export async function applyStatusAction(
       TAGS.READY_TO_SHIP,
     ]);
     if (!tagResult.ok) return tagResult;
+    const emailStatus = await sendStatusEmailNow(admin, {
+      orderId,
+      email: snapshot.email,
+      tagsAfterUpdate: [...tags, workflowTags.arrivedInCanadaTag, TAGS.READY_TO_SHIP],
+      statusAction: "arrived_in_canada",
+      shop,
+      workflowTags,
+    });
     return {
       ok: true,
-      message: `${labels.arrivedInCanada} + ready-to-ship tagged (Klaviyo email via webhook)`,
+      message: `${labels.arrivedInCanada} + ready-to-ship tagged (${emailStatus})`,
     };
   }
 

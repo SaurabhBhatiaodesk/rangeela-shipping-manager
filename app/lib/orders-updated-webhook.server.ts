@@ -1,5 +1,7 @@
 import type { AdminGraphql } from "./cycle-shared.server";
 import { graphqlJson } from "./cycle-shared.server";
+import { TAGS, hasTag, normalizeTags } from "./tags";
+import { voidThursdayDraftForOrder } from "./friday-reset.server";
 
 function parseLinkedOrderIds(value: unknown): string[] {
   if (typeof value !== "string") return [];
@@ -180,5 +182,48 @@ export async function processShippingPaidTagging(
     } catch (error) {
       console.error("Failed to process linked order", linkedId, error);
     }
+  }
+}
+
+/**
+ * Task 4b: if Shopify Flow (or anything else) added `pushed-to-next-weekend`
+ * directly, void the linked Thursday draft — Flow can flip tags but cannot
+ * call the Admin API draft mutation itself. Idempotent: no-op if the draft
+ * metafield is already cleared (e.g. the manual Friday backup already ran).
+ */
+export async function processPushedToNextWeekendVoid(
+  admin: AdminGraphql,
+  orderPayload: any,
+) {
+  const tags = normalizeTags(orderPayload?.tags);
+  if (!hasTag(tags, TAGS.PUSHED_TO_NEXT_WEEKEND)) {
+    return;
+  }
+
+  const orderGid = normalizeOrderGid(
+    String(orderPayload?.admin_graphql_api_id || orderPayload?.id || ""),
+  );
+  if (!orderGid) {
+    console.log("pushed-to-next-weekend void skipped; invalid order id");
+    return;
+  }
+
+  try {
+    const result = await voidThursdayDraftForOrder(admin, orderGid);
+    if (!result.ok) {
+      console.error(
+        "Failed to void Thursday draft for pushed-to-next-weekend order",
+        orderGid,
+        result.error,
+      );
+    } else if (result.voided) {
+      console.log("Voided Thursday draft for pushed-to-next-weekend order", orderGid);
+    }
+  } catch (error) {
+    console.error(
+      "Error voiding Thursday draft for pushed-to-next-weekend order",
+      orderGid,
+      error,
+    );
   }
 }

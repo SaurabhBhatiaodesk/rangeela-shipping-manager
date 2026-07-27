@@ -51,7 +51,7 @@ export function PreorderStatusButtons({
   const arrived = hasTag(tags, workflowTags.arrivedInCanadaTag);
 
   return (
-    <s-stack direction="inline" gap="small-200">
+    <s-stack direction="inline" gap="small-200" alignItems="center">
       {pieceMade ? (
         <DoneBadge>{labels.pieceMade}</DoneBadge>
       ) : (
@@ -69,7 +69,7 @@ export function PreorderStatusButtons({
         <DoneBadge>{labels.leavingForCanada}</DoneBadge>
       ) : (
         <s-button
-          variant="primary"
+          variant={pieceMade ? "primary" : "tertiary"}
           disabled={!pieceMade || busy}
           {...(busyAction === `${id}:leaving_for_canada`
             ? { loading: true }
@@ -84,7 +84,7 @@ export function PreorderStatusButtons({
         <DoneBadge>{labels.arrivedInCanada}</DoneBadge>
       ) : (
         <s-button
-          variant="primary"
+          variant={leaving ? "primary" : "tertiary"}
           disabled={!leaving || busy}
           {...(busyAction === `${id}:arrived_in_canada`
             ? { loading: true }

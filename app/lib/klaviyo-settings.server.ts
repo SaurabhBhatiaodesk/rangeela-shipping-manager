@@ -53,12 +53,14 @@ export type PreorderWorkflowTags = {
 };
 
 export type ShopAppSettings = {
+  klaviyoApiKey: string;
+  klaviyoApiKeySource: "shop" | "env" | "none";
   klaviyoTemplates: KlaviyoTemplateIds;
   preorderLabels: PreorderWorkflowLabels;
   preorderTags: PreorderWorkflowTags;
 };
 
-export type ShopSettingsInput = KlaviyoTemplateIds &
+export type ShopSettingsInput = { klaviyoApiKey: string } & KlaviyoTemplateIds &
   PreorderWorkflowLabels &
   PreorderWorkflowTags;
 
@@ -91,7 +93,18 @@ function resolveTag(stored: string | undefined, fallback: string): string {
 export async function getShopSettings(shop: string): Promise<ShopAppSettings> {
   const row = await prisma.shopKlaviyoSettings.findUnique({ where: { shop } });
 
+  const shopApiKey = trimOrEmpty(row?.klaviyoApiKey);
+  const envApiKey = trimOrEmpty(process.env.KLAVIYO_API_KEY);
+  const klaviyoApiKey = shopApiKey || envApiKey;
+  const klaviyoApiKeySource: ShopAppSettings["klaviyoApiKeySource"] = shopApiKey
+    ? "shop"
+    : envApiKey
+      ? "env"
+      : "none";
+
   return {
+    klaviyoApiKey,
+    klaviyoApiKeySource,
     klaviyoTemplates: {
       pieceMadeTemplateId: resolveId(
         row?.pieceMadeTemplateId,
@@ -180,6 +193,7 @@ export async function saveShopSettings(
     where: { shop },
     create: {
       shop,
+      klaviyoApiKey: trimOrEmpty(input.klaviyoApiKey),
       pieceMadeTemplateId: trimOrEmpty(input.pieceMadeTemplateId),
       leavingForCanadaTemplateId: trimOrEmpty(
         input.leavingForCanadaTemplateId,
@@ -199,6 +213,7 @@ export async function saveShopSettings(
       arrivedEmailSentTag: trimOrEmpty(input.arrivedEmailSentTag),
     },
     update: {
+      klaviyoApiKey: trimOrEmpty(input.klaviyoApiKey),
       pieceMadeTemplateId: trimOrEmpty(input.pieceMadeTemplateId),
       leavingForCanadaTemplateId: trimOrEmpty(
         input.leavingForCanadaTemplateId,
@@ -224,6 +239,7 @@ export function flattenShopSettings(
   settings: ShopAppSettings,
 ): ShopSettingsInput {
   return {
+    klaviyoApiKey: settings.klaviyoApiKey,
     ...settings.klaviyoTemplates,
     ...settings.preorderLabels,
     ...settings.preorderTags,
@@ -232,6 +248,7 @@ export function flattenShopSettings(
 
 export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
   return {
+    klaviyoApiKey: String(formData.get("klaviyoApiKey") ?? ""),
     pieceMadeTemplateId: String(formData.get("pieceMadeTemplateId") ?? ""),
     leavingForCanadaTemplateId: String(
       formData.get("leavingForCanadaTemplateId") ?? "",

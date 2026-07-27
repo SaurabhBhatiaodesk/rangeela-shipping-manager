@@ -1,10 +1,15 @@
-import { useEffect, useState, startTransition } from "react";
+import { useEffect, useRef, useState, startTransition } from "react";
   import type {
     ActionFunctionArgs,
     HeadersFunction,
     LoaderFunctionArgs,
   } from "react-router";
-  import { useFetcher, useLoaderData, useSearchParams } from "react-router";
+  import {
+    useFetcher,
+    useLoaderData,
+    useNavigate,
+    useSearchParams,
+  } from "react-router";
   import { useAppBridge } from "@shopify/app-bridge-react";
   import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -31,6 +36,8 @@ import { useEffect, useState, startTransition } from "react";
 
   type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
 
+  const ALERT_HIDE_ACTIONS = ["hold_for_next_cycle"] as const;
+
   export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin, session } = await authenticate.admin(request);
     const url = new URL(request.url);
@@ -39,7 +46,7 @@ import { useEffect, useState, startTransition } from "react";
     const shopSettings = await getShopSettings(session.shop);
 
     const base = {
-      klaviyoConfigured: Boolean(process.env.KLAVIYO_API_KEY),
+      klaviyoConfigured: shopSettings.klaviyoApiKeySource !== "none",
       thursdayTemplateConfigured: Boolean(
         shopSettings.klaviyoTemplates.thursdayTemplateId,
       ),
@@ -146,6 +153,7 @@ import { useEffect, useState, startTransition } from "react";
     return applyStatusAction(admin, orderId, actionName, {
       workflowTags: shopSettings.preorderTags,
       labels: shopSettings.preorderLabels,
+      shop: session.shop,
     });
   };
 
@@ -175,8 +183,11 @@ import { useEffect, useState, startTransition } from "react";
     const data = useLoaderData<typeof loader>();
     const fetcher = useFetcher<typeof action>();
     const shopify = useAppBridge();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [busyAction, setBusyAction] = useState<string | null>(null);
+    const [heldOrderIds, setHeldOrderIds] = useState<Set<string>>(new Set());
+    const processedFetcherDataRef = useRef<unknown>(null);
     const [lastEmailRun, setLastEmailRun] = useState<{
       rows?: Array<{
         orderName: string;
@@ -186,6 +197,20 @@ import { useEffect, useState, startTransition } from "react";
       }>;
     } | null>(null);
 
+    const [preorderSearch, setPreorderSearch] = useState("");
+
+    const filteredPreorders = (() => {
+      const q = preorderSearch.trim().toLowerCase();
+      if (!q) return data.preorders;
+      return data.preorders.filter((order) => {
+        return (
+          order.name.toLowerCase().includes(q) ||
+          (order.customerName ?? "").toLowerCase().includes(q) ||
+          (order.email ?? "").toLowerCase().includes(q)
+        );
+      });
+    })();
+
     const pageSize = 10;
     const currentPage = Math.max(
       1,
@@ -193,11 +218,11 @@ import { useEffect, useState, startTransition } from "react";
     );
     const totalPages = Math.max(
       1,
-      Math.ceil(data.preorders.length / pageSize),
+      Math.ceil(filteredPreorders.length / pageSize),
     );
     const page = Math.min(currentPage, totalPages);
 
-    const pagedPreorders = data.preorders.slice(
+    const pagedPreorders = filteredPreorders.slice(
       (page - 1) * pageSize,
       page * pageSize,
     );
@@ -214,15 +239,63 @@ import { useEffect, useState, startTransition } from "react";
       });
     };
 
+    const handlePreorderSearch = (
+      e: Event & { currentTarget: { value: string } },
+    ) => {
+      setPreorderSearch(e.currentTarget.value);
+      setPage(1);
+    };
+
     const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
     const cycleBusy = fetcher.state !== "idle";
     const [manualTestOpen, setManualTestOpen] = useState(false);
 
     useEffect(() => {
+      const freshAlertIds = new Set(data.alerts.map((order) => order.id));
+      setHeldOrderIds((prev) => {
+        let changed = false;
+        const next = new Set<string>();
+        prev.forEach((id) => {
+          if (freshAlertIds.has(id)) {
+            next.add(id);
+          } else {
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, [data.alerts]);
+
+    useEffect(() => {
       if (fetcher.state !== "idle") return;
+      if (!fetcher.data) return;
+      if (processedFetcherDataRef.current === fetcher.data) return;
+      processedFetcherDataRef.current = fetcher.data;
+
+      const finishedAction = busyAction;
       setBusyAction(null);
 
-      if (!fetcher.data) return;
+      const succeeded = "ok" in fetcher.data && fetcher.data.ok;
+      const hideAction = ALERT_HIDE_ACTIONS.find((action) =>
+        finishedAction?.endsWith(`:${action}`),
+      );
+      if (hideAction && !succeeded) {
+        const orderId = finishedAction!.slice(0, -`:${hideAction}`.length);
+        setHeldOrderIds((prev) => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+      }
+
+      if (finishedAction?.endsWith(":hold_for_next_cycle") && succeeded) {
+        navigate(
+          {
+            search: `?tab=thursday`,
+          },
+          { replace: true },
+        );
+      }
 
       if ("rows" in fetcher.data && Array.isArray(fetcher.data.rows)) {
         setLastEmailRun({ rows: fetcher.data.rows });
@@ -253,7 +326,7 @@ import { useEffect, useState, startTransition } from "react";
           { isError: true },
         );
       }
-    }, [fetcher.state, fetcher.data, shopify]);
+    }, [fetcher.state, fetcher.data, shopify, busyAction]);
 
     const setTab = (next: TabId) => {
       startTransition(() => {
@@ -266,6 +339,9 @@ import { useEffect, useState, startTransition } from "react";
 
     const runAction = (orderId: string, actionName: StatusAction) => {
       setBusyAction(`${orderId}:${actionName}`);
+      if ((ALERT_HIDE_ACTIONS as readonly string[]).includes(actionName)) {
+        setHeldOrderIds((prev) => new Set(prev).add(orderId));
+      }
       fetcher.submit(
         { intent: "status", orderId, actionName },
         { method: "POST" },
@@ -344,35 +420,47 @@ import { useEffect, useState, startTransition } from "react";
 
         {tab === "preorders" && (
           <s-section heading="Preorders — Awaiting Readiness" padding="base">
-            <s-banner heading="Status progress" tone="info">
-              <s-paragraph>
-                Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
-                {data.preorderLabels.leavingForCanada} →{" "}
-                {data.preorderLabels.arrivedInCanada}. Completed steps show as
-                green success badges. Skirt deposits use{" "}
-                {data.preorderLabels.depositFulfilled}.
-              </s-paragraph>
-              <s-link href="/app/settings">
-                <s-button variant="secondary">
-                  Edit button labels &amp; order tags
-                </s-button>
-              </s-link>
-            </s-banner>
-            {data.preorders.length === 0 ? (
-              <s-banner heading="No preorders yet" tone="warning">
-                <s-paragraph>
-                  Create a test order in the store to see status actions here.
-                </s-paragraph>
+            <s-stack direction="block" gap="large">
+              <s-banner heading="Status progress" tone="info">
+                <s-stack direction="block" gap="base">
+                  <s-paragraph>
+                    Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
+                    {data.preorderLabels.leavingForCanada} →{" "}
+                    {data.preorderLabels.arrivedInCanada}. Completed steps show as
+                    green success badges. Skirt deposits use{" "}
+                    {data.preorderLabels.depositFulfilled}.
+                  </s-paragraph>
+                  <s-link href="/app/settings">
+                    <s-button variant="secondary">
+                      Edit button labels &amp; order tags
+                    </s-button>
+                  </s-link>
+                </s-stack>
               </s-banner>
-            ) : (
-              <>
-                <s-table>
-                  <s-table-header-row>
-                    <s-table-header listSlot="primary">Order</s-table-header>
-                    <s-table-header listSlot="secondary">Customer</s-table-header>
-                    <s-table-header listSlot="labeled">Type</s-table-header>
-                    <s-table-header listSlot="inline">Actions</s-table-header>
-                  </s-table-header-row>
+              {data.preorders.length === 0 ? (
+                <s-banner heading="No preorders yet" tone="warning">
+                  <s-paragraph>
+                    Create a test order in the store to see status actions here.
+                  </s-paragraph>
+                </s-banner>
+              ) : (
+                <s-stack direction="block" gap="base">
+                  <s-table>
+                    <s-search-field
+                      slot="filters"
+                      label="Search preorders"
+                      labelAccessibilityVisibility="exclusive"
+                      placeholder="Search by order #, customer, or email"
+                      value={preorderSearch}
+                      onChange={handlePreorderSearch}
+                      onInput={handlePreorderSearch}
+                    />
+                    <s-table-header-row>
+                      <s-table-header listSlot="primary">Order</s-table-header>
+                      <s-table-header listSlot="secondary">Customer</s-table-header>
+                      <s-table-header listSlot="labeled">Type</s-table-header>
+                      <s-table-header listSlot="inline">Actions</s-table-header>
+                    </s-table-header-row>
                   <s-table-body>
                     {pagedPreorders.map((order) => (
                       <s-table-row key={order.id}>
@@ -443,6 +531,12 @@ import { useEffect, useState, startTransition } from "react";
                   </s-table-body>
                 </s-table>
 
+                {filteredPreorders.length === 0 && (
+                  <s-paragraph>
+                    No preorders match "{preorderSearch}".
+                  </s-paragraph>
+                )}
+
                 {totalPages > 1 && (
                   <s-stack direction="inline" gap="base" alignItems="center">
                     <s-button
@@ -464,8 +558,9 @@ import { useEffect, useState, startTransition } from "react";
                     </s-button>
                   </s-stack>
                 )}
-              </>
-            )}
+                </s-stack>
+              )}
+            </s-stack>
           </s-section>
         )}
 
@@ -522,13 +617,15 @@ import { useEffect, useState, startTransition } from "react";
               </s-stack>
 
               <s-banner heading="Tags, labels &amp; templates" tone="info">
-                <s-paragraph>
-                  Configure Shopify order tags, button labels, and Klaviyo
-                  template IDs on the Settings page.
-                </s-paragraph>
-                <s-link href="/app/settings">
-                  <s-button variant="secondary">Open Settings</s-button>
-                </s-link>
+                <s-stack direction="block" gap="base">
+                  <s-paragraph>
+                    Configure Shopify order tags, button labels, and Klaviyo
+                    template IDs on the Settings page.
+                  </s-paragraph>
+                  <s-link href="/app/settings">
+                    <s-button variant="secondary">Open Settings</s-button>
+                  </s-link>
+                </s-stack>
               </s-banner>
 
               <s-banner
@@ -549,7 +646,13 @@ import { useEffect, useState, startTransition } from "react";
 
               <s-stack direction="block" gap="base">
                 <s-paragraph>
-                  If an email did not send automatically, use these buttons:
+                  These buttons retry orders where the app has not yet
+                  successfully sent the Klaviyo event for a status tag (the
+                  email-sent tag is still missing) — for example a failed
+                  real-time send, or a tag added directly in Shopify Admin.
+                  They can't tell whether Klaviyo's Flow actually delivered
+                  an email it already accepted — check the Flow itself for
+                  that.
                 </s-paragraph>
                 <s-stack direction="inline" gap="base">
                   <s-button
@@ -793,25 +896,32 @@ import { useEffect, useState, startTransition } from "react";
         {tab === "alerts" && (
           <s-section heading="New item after shipping paid" padding="base">
             <s-paragraph>
-              Choose Ship now (handled manually) or Hold for next Thursday. Hold
-              adds the tag <s-text type="strong">hold-for-next-cycle</s-text>.
+              Ship now opens the exact order in Shopify Admin so staff can
+              fulfil it, add tracking, and notify the customer manually. Hold
+              for next Thursday adds the tag{" "}
+              <s-text type="strong">hold-for-next-cycle</s-text>.
             </s-paragraph>
-            {data.alerts.length === 0 ? (
-              <s-paragraph>No alerts right now.</s-paragraph>
-            ) : (
-              <s-stack direction="block" gap="base">
-                {data.alerts.map((order) => (
-                  <ShippingPaidAlert
-                    key={order.id}
-                    order={order}
-                    busy={busyAction === `${order.id}:hold_for_next_cycle`}
-                    onHold={(orderId) =>
-                      runAction(orderId, "hold_for_next_cycle")
-                    }
-                  />
-                ))}
-              </s-stack>
-            )}
+            {(() => {
+              const visibleAlerts = data.alerts.filter(
+                (order) => !heldOrderIds.has(order.id),
+              );
+              return visibleAlerts.length === 0 ? (
+                <s-paragraph>No alerts right now.</s-paragraph>
+              ) : (
+                <s-stack direction="block" gap="base">
+                  {visibleAlerts.map((order) => (
+                    <ShippingPaidAlert
+                      key={order.id}
+                      order={order}
+                      busy={busyAction === `${order.id}:hold_for_next_cycle`}
+                      onHold={(orderId) =>
+                        runAction(orderId, "hold_for_next_cycle")
+                      }
+                    />
+                  ))}
+                </s-stack>
+              );
+            })()}
           </s-section>
         )}
 

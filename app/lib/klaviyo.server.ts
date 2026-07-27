@@ -19,16 +19,18 @@ function trimOrEmpty(value: string | null | undefined): string {
  * Direct template send (/api/messages/send/) does not exist on current API.
  */
 async function createKlaviyoEvent(options: {
+  apiKey: string;
   email: string;
   metricName: string;
   properties?: Record<string, string>;
   uniqueId?: string;
 }): Promise<KlaviyoSendResult> {
-  const apiKey = process.env.KLAVIYO_API_KEY;
+  const apiKey = trimOrEmpty(options.apiKey);
   if (!apiKey) {
     return {
       ok: false,
-      error: "KLAVIYO_API_KEY is not set. Add it to your app environment.",
+      error:
+        "Klaviyo API key is not set. Add it in Settings or as KLAVIYO_API_KEY in your app environment.",
     };
   }
 
@@ -87,6 +89,7 @@ async function createKlaviyoEvent(options: {
  * Fires a preorder status metric so the matching Klaviyo Flow can email.
  */
 export async function sendPreorderStatusEmail(options: {
+  apiKey: string;
   email: string | null | undefined;
   statusAction: StatusEmailAction;
   statusTag: string;
@@ -94,7 +97,8 @@ export async function sendPreorderStatusEmail(options: {
   uniqueId?: string;
   templateId: string;
 }): Promise<KlaviyoSendResult> {
-  const { email, statusAction, statusTag, alreadySent, templateId } = options;
+  const { apiKey, email, statusAction, statusTag, alreadySent, templateId } =
+    options;
 
   if (alreadySent) {
     return { ok: true, skipped: true, reason: "already_sent" };
@@ -118,6 +122,7 @@ export async function sendPreorderStatusEmail(options: {
   }
 
   return createKlaviyoEvent({
+    apiKey,
     email,
     metricName: meta.metricName,
     uniqueId: options.uniqueId,
@@ -134,6 +139,7 @@ export async function sendPreorderStatusEmail(options: {
  * `Rangeela Thursday Shipping Invoice` (Flow uses template from settings).
  */
 export async function sendThursdayInvoiceEmail(options: {
+  apiKey: string;
   email: string;
   invoiceUrl: string;
   waitUrl: string;
@@ -156,6 +162,7 @@ export async function sendThursdayInvoiceEmail(options: {
   }
 
   return createKlaviyoEvent({
+    apiKey: options.apiKey,
     email: options.email,
     metricName: KLAVIYO_THURSDAY_METRIC,
     uniqueId: options.uniqueId,

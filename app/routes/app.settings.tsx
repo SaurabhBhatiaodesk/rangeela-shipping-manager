@@ -31,7 +31,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     form: flattenShopSettings(settings),
-    klaviyoConfigured: Boolean(process.env.KLAVIYO_API_KEY),
+    klaviyoConfigured: settings.klaviyoApiKeySource !== "none",
+    klaviyoApiKeySource: settings.klaviyoApiKeySource,
     defaults: {
       tags: DEFAULT_PREORDER_TAGS,
       labels: DEFAULT_PREORDER_LABELS,
@@ -47,6 +48,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "reset_defaults") {
     await saveShopSettings(session.shop, {
+      klaviyoApiKey: "",
       pieceMadeTemplateId: "",
       leavingForCanadaTemplateId: "",
       arrivedInCanadaTemplateId: "",
@@ -124,8 +126,9 @@ export default function SettingsPage() {
       {!data.klaviyoConfigured && (
         <s-banner heading="Klaviyo API key is missing" tone="warning">
           <s-paragraph>
-            Template IDs are saved here, but emails will not send until{" "}
-            <s-text type="strong">KLAVIYO_API_KEY</s-text> is set in your app
+            Template IDs are saved here, but emails will not send until a
+            Klaviyo API key is set below, or as{" "}
+            <s-text type="strong">KLAVIYO_API_KEY</s-text> in your app
             environment (Heroku config or .env).
           </s-paragraph>
         </s-banner>
@@ -237,6 +240,29 @@ export default function SettingsPage() {
             </s-stack>
           </s-section>
 
+          <s-section heading="Klaviyo API key" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Private API key from Klaviyo (Settings → API Keys). Saved per
+                store, so each client can connect their own Klaviyo account
+                here without editing app environment variables.
+              </s-paragraph>
+              <s-password-field
+                label="Klaviyo private API key"
+                name="klaviyoApiKey"
+                value={field(form, "klaviyoApiKey")}
+                details={
+                  data.klaviyoApiKeySource === "shop"
+                    ? "Using the key saved here."
+                    : data.klaviyoApiKeySource === "env"
+                      ? "Showing the KLAVIYO_API_KEY from app environment. Change and save to use a different key for this store."
+                      : "No key set yet. Emails will not send until one is added here or as KLAVIYO_API_KEY."
+                }
+                onChange={update("klaviyoApiKey")}
+              />
+            </s-stack>
+          </s-section>
+
           <s-section heading="Klaviyo template IDs" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
@@ -288,23 +314,25 @@ export default function SettingsPage() {
         </s-stack>
       </Form>
 
-      <s-section heading="Reset" padding="base">
-        <s-paragraph>
-          Clears all saved overrides for this shop. The app will use built-in
-          defaults and environment variables again.
-        </s-paragraph>
-        <Form method="post">
-          <input type="hidden" name="intent" value="reset_defaults" />
-          <s-button
-            variant="secondary"
-            tone="critical"
-            type="submit"
-            disabled={saving}
-          >
-            Reset to defaults
-          </s-button>
-        </Form>
-      </s-section>
+      <s-box paddingBlockStart="large-500">
+        <s-section heading="Reset" padding="base">
+          <s-paragraph>
+            Clears all saved overrides for this shop. The app will use
+            built-in defaults and environment variables again.
+          </s-paragraph>
+          <Form method="post">
+            <input type="hidden" name="intent" value="reset_defaults" />
+            <s-button
+              variant="secondary"
+              tone="critical"
+              type="submit"
+              disabled={saving}
+            >
+              Reset to defaults
+            </s-button>
+          </Form>
+        </s-section>
+      </s-box>
     </s-page>
   );
 }

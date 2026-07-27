@@ -2,7 +2,7 @@ import { hasTag } from "./tags";
 import { sendPreorderStatusEmail } from "./klaviyo.server";
 import {
   emailSentTagForAction,
-  getKlaviyoTemplateIds,
+  getShopSettings,
   statusTagForAction,
   templateIdForAction,
   type PreorderWorkflowTags,
@@ -61,15 +61,16 @@ export async function sendStatusEmailIfNeeded(
     return { ok: false, error: "Order has no customer email" };
   }
 
-  const templateIds = await getKlaviyoTemplateIds(shop);
+  const settings = await getShopSettings(shop);
 
   const emailResult = await sendPreorderStatusEmail({
+    apiKey: settings.klaviyoApiKey,
     email,
     statusAction,
     statusTag,
     alreadySent: false,
     uniqueId: `${orderId}:${statusTag}`,
-    templateId: templateIdForAction(templateIds, statusAction),
+    templateId: templateIdForAction(settings.klaviyoTemplates, statusAction),
   });
 
   if (!emailResult.ok) {

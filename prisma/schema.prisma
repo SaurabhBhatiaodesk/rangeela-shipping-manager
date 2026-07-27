@@ -33,6 +33,7 @@ model Session {
 
 model ShopKlaviyoSettings {
   shop                       String   @id
+  klaviyoApiKey              String   @default("")
   pieceMadeTemplateId        String   @default("")
   leavingForCanadaTemplateId String   @default("")
   arrivedInCanadaTemplateId  String   @default("")

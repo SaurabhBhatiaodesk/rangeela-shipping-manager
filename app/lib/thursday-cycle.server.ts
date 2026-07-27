@@ -281,44 +281,6 @@ async function setDraftMetafield(
   );
 }
 
-function serializeLinkedOrderIds(linkedOrderIds: Array<string | number>) {
-  return JSON.stringify(linkedOrderIds.map(String));
-}
-
-async function attachLinkedOrderIdsToDraft(
-  admin: AdminGraphql,
-  draftOrderId: string,
-  linkedOrderIds: Array<string | number>,
-) {
-  if (!linkedOrderIds.length) return;
-
-  const note = JSON.stringify({ linked_order_ids: linkedOrderIds });
-
-  await graphqlJson(
-    admin,
-    `#graphql
-      mutation AttachLinkedOrderIdsToDraft($input: DraftOrderInput!) {
-        draftOrderUpdate(input: $input) {
-          draftOrder { id note }
-          userErrors { field message }
-        }
-      }
-    `,
-    {
-      input: {
-        id: draftOrderId,
-        note,
-      },
-    },
-  );
-
-  console.log(
-    "Thursday draft invoice linked_order_ids note attached:",
-    draftOrderId,
-    linkedOrderIds,
-  );
-}
-
 async function createShippingDraft(
   admin: AdminGraphql,
   orders: CycleOrder[],
@@ -326,23 +288,27 @@ async function createShippingDraft(
   amount: string,
   linkedOrderIds: Array<string | number>,
 ): Promise<{ id: string; invoiceUrl: string | null; name: string }> {
+  // Human-readable note per client spec (e.g. "Combined orders: #1234, #1235").
+  // linked_order_ids goes in customAttributes instead — draft order custom
+  // attributes carry over to the real order's note_attributes once paid, which
+  // is the primary (most reliable) strategy orders-updated-webhook.server.ts
+  // uses to find the original orders to tag shipping-paid.
   const note = `Combined orders: ${orders.map((o) => o.name).join(", ")}`;
   const primary = orders[0]!;
   const address = primary.shippingAddress;
 
-  const draftNote = JSON.stringify({
-    linked_order_ids: linkedOrderIds,
-    combined_orders: orders.map((o) => o.name),
-  });
-
   const input: Record<string, unknown> = {
     email,
-    note: draftNote,
+    note,
     tags: ["rangeela-thursday-shipping", "shipping-invoice"],
     customAttributes: [
       {
         key: "source_order_ids",
         value: orders.map((o) => o.id).join(","),
+      },
+      {
+        key: "linked_order_ids",
+        value: JSON.stringify(linkedOrderIds.map(String)),
       },
     ],
     lineItems: [
@@ -431,6 +397,7 @@ export async function runThursdayCycle(
   const settings = await getShopSettings(options.shop);
   const arrivedInCanadaTag = settings.preorderTags.arrivedInCanadaTag;
   const thursdayTemplateId = settings.klaviyoTemplates.thursdayTemplateId;
+  const klaviyoApiKey = settings.klaviyoApiKey;
 
   const [pool1Raw, pool2Raw] = await Promise.all([
     fetchCycleOrders(
@@ -539,6 +506,7 @@ export async function runThursdayCycle(
       });
 
       const emailResult = await sendThursdayInvoiceEmail({
+        apiKey: klaviyoApiKey,
         email,
         invoiceUrl: draft.invoiceUrl || "",
         waitUrl,

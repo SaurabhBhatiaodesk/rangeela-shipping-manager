@@ -1,6 +1,9 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
-import { processShippingPaidTagging } from "../lib/orders-updated-webhook.server";
+import {
+  processPushedToNextWeekendVoid,
+  processShippingPaidTagging,
+} from "../lib/orders-updated-webhook.server";
 
 /**
  * orders/updated webhook
@@ -21,6 +24,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await processShippingPaidTagging(admin, payload);
   } catch (error) {
     console.error(`[orders/updated] shipping-paid tagging failed:`, error);
+  }
+
+  try {
+    await processPushedToNextWeekendVoid(admin, payload);
+  } catch (error) {
+    console.error(`[orders/updated] pushed-to-next-weekend void failed:`, error);
   }
 
   return new Response();
