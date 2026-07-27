@@ -386,7 +386,26 @@ import { useEffect, useRef, useState, startTransition } from "react";
           </s-paragraph>
         </s-banner>
 
-        <s-section heading="Menu" padding="base">
+        {tab === "preorders" && (
+          <s-banner heading="Status progress" tone="info">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
+                {data.preorderLabels.leavingForCanada} →{" "}
+                {data.preorderLabels.arrivedInCanada}. Completed steps show as
+                green success badges. Skirt deposits use{" "}
+                {data.preorderLabels.depositFulfilled}.
+              </s-paragraph>
+              <s-link href="/app/settings">
+                <s-button variant="secondary">
+                  Edit button labels &amp; order tags
+                </s-button>
+              </s-link>
+            </s-stack>
+          </s-banner>
+        )}
+
+        <s-section padding="base">
           <s-stack direction="inline" gap="small" alignItems="center">
             <TabButton
               active={tab === "preorders"}
@@ -424,22 +443,6 @@ import { useEffect, useRef, useState, startTransition } from "react";
         {tab === "preorders" && (
           <s-section heading="Preorders — Awaiting Readiness" padding="base">
             <s-stack direction="block" gap="large">
-              <s-banner heading="Status progress" tone="info">
-                <s-stack direction="block" gap="base">
-                  <s-paragraph>
-                    Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
-                    {data.preorderLabels.leavingForCanada} →{" "}
-                    {data.preorderLabels.arrivedInCanada}. Completed steps show as
-                    green success badges. Skirt deposits use{" "}
-                    {data.preorderLabels.depositFulfilled}.
-                  </s-paragraph>
-                  <s-link href="/app/settings">
-                    <s-button variant="secondary">
-                      Edit button labels &amp; order tags
-                    </s-button>
-                  </s-link>
-                </s-stack>
-              </s-banner>
               {data.preorders.length === 0 ? (
                 <s-banner heading="No preorders yet" tone="warning">
                   <s-paragraph>
@@ -548,7 +551,13 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 )}
 
                 {totalPages > 1 && (
-                  <s-stack direction="inline" gap="base" alignItems="center">
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    alignItems="center"
+                    justifyContent="center"
+                    inlineSize="100%"
+                  >
                     <s-button
                       variant="secondary"
                       disabled={page <= 1}
@@ -556,9 +565,9 @@ import { useEffect, useRef, useState, startTransition } from "react";
                     >
                       Previous
                     </s-button>
-                    <s-paragraph>
+                    <s-text color="subdued">
                       Page {page} of {totalPages}
-                    </s-paragraph>
+                    </s-text>
                     <s-button
                       variant="secondary"
                       disabled={page >= totalPages}
@@ -731,7 +740,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
         {tab === "thursday" && (
           <s-section heading="Thursday shipping invoice" padding="base">
-            <s-stack direction="block" gap="base">
+            <s-stack direction="block" gap="large">
               <s-paragraph>
                 Combines eligible preorder and ready-to-wear orders for the same
                 customer into one draft shipping invoice. Excludes Saskatoon and
@@ -905,77 +914,86 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
         {tab === "alerts" && (
           <s-section heading="New item after shipping paid" padding="base">
-            <s-paragraph>
-              Ship now opens the exact order in Shopify Admin so staff can
-              fulfil it, add tracking, and notify the customer manually. Hold
-              for next Thursday adds the tag{" "}
-              <s-text type="strong">hold-for-next-cycle</s-text>.
-            </s-paragraph>
-            {(() => {
-              const visibleAlerts = data.alerts.filter(
-                (order) => !heldOrderIds.has(order.id),
-              );
-              return visibleAlerts.length === 0 ? (
-                <s-paragraph>No alerts right now.</s-paragraph>
-              ) : (
-                <s-stack direction="block" gap="base">
-                  {visibleAlerts.map((order) => (
-                    <ShippingPaidAlert
-                      key={order.id}
-                      order={order}
-                      busy={busyAction === `${order.id}:hold_for_next_cycle`}
-                      onHold={(orderId) =>
-                        runAction(orderId, "hold_for_next_cycle")
-                      }
-                    />
-                  ))}
-                </s-stack>
-              );
-            })()}
+            <s-stack direction="block" gap="large">
+              <s-paragraph>
+                Ship now opens the exact order in Shopify Admin so staff can
+                fulfil it, add tracking, and notify the customer manually.
+                Hold for next Thursday adds the tag{" "}
+                <s-text type="strong">hold-for-next-cycle</s-text>.
+              </s-paragraph>
+              {(() => {
+                const visibleAlerts = data.alerts.filter(
+                  (order) => !heldOrderIds.has(order.id),
+                );
+                return visibleAlerts.length === 0 ? (
+                  <s-paragraph>No alerts right now.</s-paragraph>
+                ) : (
+                  <s-stack direction="block" gap="base">
+                    {visibleAlerts.map((order) => (
+                      <ShippingPaidAlert
+                        key={order.id}
+                        order={order}
+                        busy={
+                          busyAction === `${order.id}:hold_for_next_cycle`
+                        }
+                        onHold={(orderId) =>
+                          runAction(orderId, "hold_for_next_cycle")
+                        }
+                      />
+                    ))}
+                  </s-stack>
+                );
+              })()}
+            </s-stack>
           </s-section>
         )}
 
         {tab === "friday" && (
           <s-section heading="Friday reset" padding="base">
-            <s-paragraph>
-              On Friday midnight (CST), Shopify Flow removes{" "}
-              <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
-              <s-text type="strong">pushed-to-next-weekend</s-text>. The app then
-              cancels the old unpaid draft invoice.
-            </s-paragraph>
-            <s-paragraph>
-              Use the buttons below only as a manual backup if Flow did not run.
-            </s-paragraph>
-            <s-button-group gap="base" accessibilityLabel="Friday reset actions">
-              <s-button
-                slot="secondary-actions"
-                variant={isBusy("friday_run:preview") ? "primary" : "secondary"}
-                disabled={cycleBusy}
-                {...(isBusy("friday_run:preview") ? { loading: true } : {})}
-                onClick={() => runCycle("friday_run", true)}
-              >
-                Preview only (no changes)
-              </s-button>
-              <s-button
-                slot="primary-action"
-                variant="primary"
-                tone="critical"
-                disabled={cycleBusy}
-                {...(isBusy("friday_run:run") ? { loading: true } : {})}
-                onClick={() => runCycle("friday_run", false)}
-              >
-                Run Friday backup now
-              </s-button>
-            </s-button-group>
-            {!data.cronConfigured && (
-              <s-banner heading="Scheduler settings incomplete" tone="info">
+            <s-stack direction="block" gap="large">
+              <s-stack direction="block" gap="base">
                 <s-paragraph>
-                  Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
-                  <s-text type="strong">CRON_SHOP</s-text> for automated Thursday
-                  runs.
+                  On Friday midnight (CST), Shopify Flow removes{" "}
+                  <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
+                  <s-text type="strong">pushed-to-next-weekend</s-text>. The
+                  app then cancels the old unpaid draft invoice.
                 </s-paragraph>
-              </s-banner>
-            )}
+                <s-paragraph>
+                  Use the buttons below only as a manual backup if Flow did
+                  not run.
+                </s-paragraph>
+              </s-stack>
+              <s-button-group gap="base" accessibilityLabel="Friday reset actions">
+                <s-button
+                  slot="secondary-actions"
+                  variant={isBusy("friday_run:preview") ? "primary" : "secondary"}
+                  disabled={cycleBusy}
+                  {...(isBusy("friday_run:preview") ? { loading: true } : {})}
+                  onClick={() => runCycle("friday_run", true)}
+                >
+                  Preview only (no changes)
+                </s-button>
+                <s-button
+                  slot="primary-action"
+                  variant="primary"
+                  tone="critical"
+                  disabled={cycleBusy}
+                  {...(isBusy("friday_run:run") ? { loading: true } : {})}
+                  onClick={() => runCycle("friday_run", false)}
+                >
+                  Run Friday backup now
+                </s-button>
+              </s-button-group>
+              {!data.cronConfigured && (
+                <s-banner heading="Scheduler settings incomplete" tone="info">
+                  <s-paragraph>
+                    Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
+                    <s-text type="strong">CRON_SHOP</s-text> for automated
+                    Thursday runs.
+                  </s-paragraph>
+                </s-banner>
+              )}
+            </s-stack>
           </s-section>
         )}
       </s-page>
