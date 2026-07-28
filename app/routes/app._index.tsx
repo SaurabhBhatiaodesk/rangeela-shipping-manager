@@ -45,7 +45,25 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
     const shopSettings = await getShopSettings(session.shop);
 
+    let shopName = session.shop;
+    try {
+      const shopResponse = await admin.graphql(
+        `#graphql
+          query ShippingManagerShopName {
+            shop {
+              name
+            }
+          }`,
+      );
+      const shopJson = await shopResponse.json();
+      shopName = shopJson.data?.shop?.name || session.shop;
+    } catch {
+      shopName = session.shop;
+    }
+
     const base = {
+      shop: session.shop,
+      shopName,
       klaviyoConfigured: shopSettings.klaviyoApiKeySource !== "none",
       thursdayTemplateConfigured: Boolean(
         shopSettings.klaviyoTemplates.thursdayTemplateId,
@@ -159,6 +177,47 @@ import { useEffect, useRef, useState, startTransition } from "react";
       shop: session.shop,
     });
   };
+
+  const AVATAR_PALETTE = [
+    { bg: "#E3F5EA", fg: "#2E8F4C" },
+    { bg: "#EAF1FE", fg: "#4A6FE0" },
+    { bg: "#FDF1E3", fg: "#B9740B" },
+    { bg: "#FBE9EE", fg: "#C43D6B" },
+    { bg: "#F0E9FE", fg: "#7C4FD6" },
+    { bg: "#E3F6F5", fg: "#2A9D96" },
+  ];
+
+  function CustomerAvatar({ name }: { name: string }) {
+    const initials = name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?";
+    const paletteIndex =
+      name.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0) %
+      AVATAR_PALETTE.length;
+    const { bg, fg } = AVATAR_PALETTE[paletteIndex];
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          background: bg,
+          color: fg,
+          fontSize: 12,
+          fontWeight: 700,
+          flexShrink: 0,
+        }}
+      >
+        {initials}
+      </span>
+    );
+  }
 
   function TabButton({
     active,
@@ -366,6 +425,142 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
     return (
       <s-page heading="Rangeela Shipping Manager" inlineSize="large">
+        <s-box paddingBlockEnd="small-200">
+          <s-stack direction="inline" alignItems="center" gap="small-200">
+            <s-icon type="wand" tone="info" size="base" />
+            <span style={{ fontSize: 20, fontWeight: 700, color: "#1A1F36" }}>
+              Welcome back — here's your shipping overview.
+            </span>
+          </s-stack>
+        </s-box>
+        <s-box paddingBlockEnd="large">
+          <div
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #E3E8EF",
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
+          >
+            <s-box padding="base">
+              <s-grid
+                gridTemplateColumns="44px 1fr auto"
+                alignItems="center"
+                columnGap="base"
+              >
+                <s-box inlineSize="44px" blockSize="44px" overflow="hidden">
+                    <svg
+                      width="44"
+                      height="44"
+                      viewBox="0 0 56 56"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <circle cx="28" cy="28" r="28" fill="#E3F5EA" />
+                      <rect
+                        x="13"
+                        y="15"
+                        width="30"
+                        height="21"
+                        rx="4"
+                        fill="#FFFFFF"
+                        stroke="#B4E0C4"
+                        strokeWidth="1.5"
+                      />
+                      <path
+                        d="M13 19a4 4 0 0 1 4-4h22a4 4 0 0 1 4 4v2H13v-2Z"
+                        fill="#34A853"
+                        opacity="0.18"
+                      />
+                      <circle cx="17.5" cy="17.5" r="1" fill="#2E8F4C" />
+                      <circle cx="20.5" cy="17.5" r="1" fill="#2E8F4C" />
+                      <rect x="18" y="25" width="17" height="2" rx="1" fill="#CFEBDA" />
+                      <rect x="18" y="29.5" width="11" height="2" rx="1" fill="#CFEBDA" />
+                      <circle cx="41" cy="39" r="10" fill="#34A853" stroke="#F4FBF7" strokeWidth="2.5" />
+                      <path
+                        d="M37 39.3l2.6 2.6 5.4-5.6"
+                        fill="none"
+                        stroke="#FFFFFF"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                </svg>
+                </s-box>
+                <s-stack direction="block" gap="small-200">
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1F36" }}>
+                    Store connected
+                  </span>
+                  <s-text color="subdued">
+                    {data.shopName} — {data.shop}
+                  </s-text>
+                </s-stack>
+                <s-badge
+                  tone="success"
+                  color="strong"
+                  icon="check-circle-filled"
+                >
+                  Live
+                </s-badge>
+              </s-grid>
+            </s-box>
+            <s-divider color="base" />
+            <s-box padding="base">
+              <s-grid
+                gridTemplateColumns="44px 1fr"
+                alignItems="start"
+                columnGap="base"
+              >
+                <s-box inlineSize="44px" blockSize="44px" overflow="hidden">
+                  <svg
+                    width="44"
+                    height="44"
+                    viewBox="0 0 56 56"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle cx="28" cy="28" r="28" fill="#EAF1FE" />
+                    <path
+                      d="M28 14l12 6v12l-12 6-12-6V20l12-6Z"
+                      fill="#FFFFFF"
+                      stroke="#B9CDF7"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M16 20l12 6 12-6"
+                      fill="none"
+                      stroke="#6A8DF0"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path d="M28 26v12" stroke="#6A8DF0" strokeWidth="1.5" />
+                    <circle cx="41" cy="39" r="10" fill="#4A6FE0" stroke="#F4F7FE" strokeWidth="2.5" />
+                    <path
+                      d="M37 39h8M41 35v8"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </s-box>
+                <s-stack direction="block" gap="small-200">
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1F36" }}>
+                    Shipping workflow
+                  </span>
+                  <s-paragraph>
+                    Manage preorders, status emails, Thursday invoices,
+                    shipping-paid alerts, and Friday reset. Use the steps
+                    below in order — when you mark a preorder step, the
+                    matching Shopify tag is added and Klaviyo sends the
+                    customer email. Tags, button labels, and template IDs are
+                    configured in{" "}
+                    <s-link href="/app/settings">Settings</s-link>.
+                  </s-paragraph>
+                </s-stack>
+              </s-grid>
+            </s-box>
+          </div>
+        </s-box>
+
         {data.loadError && (
           <s-banner heading="Could not load data" tone="critical">
             <s-paragraph>{data.loadError}</s-paragraph>
@@ -375,16 +570,6 @@ import { useEffect, useRef, useState, startTransition } from "react";
             </s-paragraph>
           </s-banner>
         )}
-
-        <s-banner heading="Shipping workflow" tone="info">
-          <s-paragraph>
-            Manage preorders, status emails, Thursday invoices, shipping-paid
-            alerts, and Friday reset. Use the steps below in order — when you
-            mark a preorder step, the matching Shopify tag is added and Klaviyo
-            sends the customer email. Tags, button labels, and template IDs are
-            configured in <s-link href="/app/settings">Settings</s-link>.
-          </s-paragraph>
-        </s-banner>
 
         {tab === "preorders" && (
           <s-banner heading="Preorder status workflow" tone="success">
@@ -478,7 +663,22 @@ import { useEffect, useRef, useState, startTransition } from "react";
                           </s-link>
                         </s-table-cell>
                         <s-table-cell>
-                          {order.customerName || order.email || "—"}
+                          {order.customerName || order.email ? (
+                            <s-stack
+                              direction="inline"
+                              alignItems="center"
+                              gap="small-200"
+                            >
+                              <CustomerAvatar
+                                name={order.customerName || order.email || "?"}
+                              />
+                              <s-text>
+                                {order.customerName || order.email}
+                              </s-text>
+                            </s-stack>
+                          ) : (
+                            "—"
+                          )}
                         </s-table-cell>
                         <s-table-cell>
                           {order.isSkirtDeposit ? (
@@ -487,7 +687,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                               data.preorderTags.depositFulfilledTag,
                             ) ? (
                               <s-badge
-                                tone="success"
+                                tone="neutral"
                                 color="strong"
                                 icon="check-circle"
                               >
@@ -507,7 +707,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                               data.preorderTags.readyToShipTag,
                             ) ? (
                             <s-badge
-                              tone="success"
+                              tone="neutral"
                               color="strong"
                               icon="check-circle"
                             >
@@ -584,54 +784,68 @@ import { useEffect, useRef, useState, startTransition } from "react";
         {tab === "emails" && (
           <s-section heading="Status emails" padding="base">
             <s-stack direction="block" gap="large">
-              <s-stack direction="block" gap="base">
-                <s-paragraph>
-                  When a status tag is added, the app creates a Klaviyo event. A
-                  live Klaviyo Flow for that metric sends the email, then the
-                  app adds an email-sent tag so it is not sent again.
-                </s-paragraph>
-                <s-unordered-list>
-                  <s-list-item>
-                    {data.preorderLabels.pieceMade} → tag{" "}
-                    <s-text type="strong">{data.preorderTags.pieceMadeTag}</s-text>{" "}
-                    → metric "
-                    {KLAVIYO_STATUS_EMAIL_META.piece_made.metricName}" →
-                    template {data.klaviyoTemplates.pieceMadeTemplateId} →
-                    email-sent tag{" "}
-                    <s-text type="strong">
-                      {data.preorderTags.pieceMadeEmailSentTag}
-                    </s-text>
-                  </s-list-item>
-                  <s-list-item>
-                    {data.preorderLabels.leavingForCanada} → tag{" "}
-                    <s-text type="strong">
-                      {data.preorderTags.leavingForCanadaTag}
-                    </s-text>{" "}
-                    → metric "
-                    {KLAVIYO_STATUS_EMAIL_META.leaving_for_canada.metricName}
-                    " → template{" "}
-                    {data.klaviyoTemplates.leavingForCanadaTemplateId} →
-                    email-sent tag{" "}
-                    <s-text type="strong">
-                      {data.preorderTags.leavingEmailSentTag}
-                    </s-text>
-                  </s-list-item>
-                  <s-list-item>
-                    {data.preorderLabels.arrivedInCanada} → tag{" "}
-                    <s-text type="strong">
-                      {data.preorderTags.arrivedInCanadaTag}
-                    </s-text>{" "}
-                    → metric "
-                    {KLAVIYO_STATUS_EMAIL_META.arrived_in_canada.metricName}
-                    " → template{" "}
-                    {data.klaviyoTemplates.arrivedInCanadaTemplateId} →
-                    email-sent tag{" "}
-                    <s-text type="strong">
-                      {data.preorderTags.arrivedEmailSentTag}
-                    </s-text>
-                  </s-list-item>
-                </s-unordered-list>
-              </s-stack>
+              <s-box
+                background="base"
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor="subdued"
+                borderRadius="large-100"
+                padding="large"
+              >
+                <s-stack direction="block" gap="base">
+                  <s-stack direction="inline" alignItems="center" gap="small-200">
+                    <s-badge tone="info" color="strong">
+                      How it works
+                    </s-badge>
+                  </s-stack>
+                  <s-paragraph>
+                    When a status tag is added, the app creates a Klaviyo event. A
+                    live Klaviyo Flow for that metric sends the email, then the
+                    app adds an email-sent tag so it is not sent again.
+                  </s-paragraph>
+                  <s-unordered-list>
+                    <s-list-item>
+                      {data.preorderLabels.pieceMade} → tag{" "}
+                      <s-text type="strong">{data.preorderTags.pieceMadeTag}</s-text>{" "}
+                      → metric "
+                      {KLAVIYO_STATUS_EMAIL_META.piece_made.metricName}" →
+                      template {data.klaviyoTemplates.pieceMadeTemplateId} →
+                      email-sent tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.pieceMadeEmailSentTag}
+                      </s-text>
+                    </s-list-item>
+                    <s-list-item>
+                      {data.preorderLabels.leavingForCanada} → tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.leavingForCanadaTag}
+                      </s-text>{" "}
+                      → metric "
+                      {KLAVIYO_STATUS_EMAIL_META.leaving_for_canada.metricName}
+                      " → template{" "}
+                      {data.klaviyoTemplates.leavingForCanadaTemplateId} →
+                      email-sent tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.leavingEmailSentTag}
+                      </s-text>
+                    </s-list-item>
+                    <s-list-item>
+                      {data.preorderLabels.arrivedInCanada} → tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.arrivedInCanadaTag}
+                      </s-text>{" "}
+                      → metric "
+                      {KLAVIYO_STATUS_EMAIL_META.arrived_in_canada.metricName}
+                      " → template{" "}
+                      {data.klaviyoTemplates.arrivedInCanadaTemplateId} →
+                      email-sent tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.arrivedEmailSentTag}
+                      </s-text>
+                    </s-list-item>
+                  </s-unordered-list>
+                </s-stack>
+              </s-box>
 
               <s-banner heading="Tags, labels &amp; templates" tone="info">
                 Configure Shopify order tags, button labels, and Klaviyo
@@ -704,19 +918,45 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 </s-stack>
 
                 {lastEmailRun?.rows && lastEmailRun.rows.length > 0 && (
-                  <s-box padding="base" borderWidth="base" borderRadius="base">
-                    <s-stack direction="block" gap="base">
-                      <s-heading>Last check result</s-heading>
-                      <s-unordered-list>
+                  <s-box
+                    background="base"
+                    borderWidth="base"
+                    borderStyle="solid"
+                    borderColor="subdued"
+                    borderRadius="large-100"
+                    padding="none"
+                    overflow="hidden"
+                  >
+                    <s-box padding="base">
+                      <s-text type="strong">Last check result</s-text>
+                    </s-box>
+                    <s-divider color="base" />
+                    <s-table>
+                      <s-table-header-row>
+                        <s-table-header listSlot="primary">Order</s-table-header>
+                        <s-table-header listSlot="secondary">Job</s-table-header>
+                        <s-table-header listSlot="labeled">Result</s-table-header>
+                        <s-table-header listSlot="inline">Detail</s-table-header>
+                      </s-table-header-row>
+                      <s-table-body>
                         {lastEmailRun.rows.map((row, i) => {
+                          const isPreview = row.detail?.includes("preview only");
                           const label =
                             row.result === "sent"
                               ? "Email sent"
                               : row.result === "error"
                                 ? "Failed"
-                                : row.detail?.includes("preview only")
-                                  ? "Preview only (not sent)"
+                                : isPreview
+                                  ? "Preview only"
                                   : "Skipped";
+                          const tone =
+                            row.result === "sent"
+                              ? "success"
+                              : row.result === "error"
+                                ? "critical"
+                                : isPreview
+                                  ? "info"
+                                  : "neutral";
                           const extra =
                             row.result === "error"
                               ? row.detail
@@ -724,16 +964,20 @@ import { useEffect, useRef, useState, startTransition } from "react";
                                 ? row.detail.replace("preview only — ", "")
                                 : undefined;
                           return (
-                            <s-list-item
-                              key={`${row.orderName}-${row.job}-${i}`}
-                            >
-                              {row.orderName} — {row.job}: {label}
-                              {extra ? ` — ${extra}` : ""}
-                            </s-list-item>
+                            <s-table-row key={`${row.orderName}-${row.job}-${i}`}>
+                              <s-table-cell>{row.orderName}</s-table-cell>
+                              <s-table-cell>{row.job}</s-table-cell>
+                              <s-table-cell>
+                                <s-badge tone={tone} color="strong">
+                                  {label}
+                                </s-badge>
+                              </s-table-cell>
+                              <s-table-cell>{extra || "—"}</s-table-cell>
+                            </s-table-row>
                           );
                         })}
-                      </s-unordered-list>
-                    </s-stack>
+                      </s-table-body>
+                    </s-table>
                   </s-box>
                 )}
               </s-stack>
@@ -883,31 +1127,68 @@ import { useEffect, useRef, useState, startTransition } from "react";
               )}
 
               {data.thursdayPreview && (
-                <s-box padding="base" borderWidth="base" borderRadius="base">
-                  <s-paragraph>
-                    Preview: {data.thursdayPreview.customersProcessed} customer(s)
-                  </s-paragraph>
+                <s-box
+                  background="base"
+                  borderWidth="base"
+                  borderStyle="solid"
+                  borderColor="subdued"
+                  borderRadius="large-100"
+                  padding="none"
+                  overflow="hidden"
+                >
+                  <s-box padding="base">
+                    <s-text type="strong">
+                      Preview: {data.thursdayPreview.customersProcessed} customer(s)
+                    </s-text>
+                  </s-box>
                   {data.thursdayPreview.results.length === 0 ? (
-                    <s-paragraph>No qualifying orders this cycle.</s-paragraph>
+                    <>
+                      <s-divider color="base" />
+                      <s-box padding="base">
+                        <s-paragraph>No qualifying orders this cycle.</s-paragraph>
+                      </s-box>
+                    </>
                   ) : (
-                    <s-table>
-                      <s-table-header-row>
-                        <s-table-header listSlot="primary">Email</s-table-header>
-                        <s-table-header listSlot="secondary">Orders</s-table-header>
-                        <s-table-header listSlot="labeled">Items</s-table-header>
-                        <s-table-header listSlot="inline">Shipping</s-table-header>
-                      </s-table-header-row>
-                      <s-table-body>
-                        {data.thursdayPreview.results.map((row) => (
-                          <s-table-row key={row.email}>
-                            <s-table-cell>{row.email}</s-table-cell>
-                            <s-table-cell>{row.orderNames.join(", ")}</s-table-cell>
-                            <s-table-cell>{row.itemCount}</s-table-cell>
-                            <s-table-cell>{row.shippingAmount}</s-table-cell>
-                          </s-table-row>
-                        ))}
-                      </s-table-body>
-                    </s-table>
+                    <>
+                      <s-divider color="base" />
+                      <s-table>
+                        <s-table-header-row>
+                          <s-table-header listSlot="primary">Email</s-table-header>
+                          <s-table-header listSlot="secondary">Orders</s-table-header>
+                          <s-table-header listSlot="labeled">Items</s-table-header>
+                          <s-table-header listSlot="inline">Shipping</s-table-header>
+                        </s-table-header-row>
+                        <s-table-body>
+                          {data.thursdayPreview.results.map((row) => (
+                            <s-table-row key={row.email}>
+                              <s-table-cell>
+                                <s-stack
+                                  direction="inline"
+                                  alignItems="center"
+                                  gap="small-200"
+                                >
+                                  <CustomerAvatar name={row.email} />
+                                  <s-text>{row.email}</s-text>
+                                </s-stack>
+                              </s-table-cell>
+                              <s-table-cell>
+                                <s-text>{row.orderNames.join(", ")}</s-text>
+                              </s-table-cell>
+                              <s-table-cell>
+                                <s-badge tone="info" color="strong">
+                                  {row.itemCount}
+                                </s-badge>
+                              </s-table-cell>
+                              <s-table-cell>
+                                <s-badge tone="success" color="strong">
+                                  {row.shippingAmount}
+                                </s-badge>
+                              </s-table-cell>
+                            </s-table-row>
+                          ))}
+                        </s-table-body>
+                      </s-table>
+                    </>
                   )}
                 </s-box>
               )}
@@ -915,20 +1196,37 @@ import { useEffect, useRef, useState, startTransition } from "react";
           </s-section>
         )}
 
-        {tab === "alerts" && (
-          <s-section heading="New item after shipping paid" padding="base">
-            <s-stack direction="block" gap="large">
-              <s-paragraph>
-                Ship now opens the exact order in Shopify Admin so staff can
-                fulfil it, add tracking, and notify the customer manually.
-                Hold for next Thursday adds the tag{" "}
-                <s-text type="strong">hold-for-next-cycle</s-text>.
-              </s-paragraph>
-              {(() => {
-                const visibleAlerts = data.alerts.filter(
-                  (order) => !heldOrderIds.has(order.id),
-                );
-                return visibleAlerts.length === 0 ? (
+        {tab === "alerts" && (() => {
+          const visibleAlerts = data.alerts.filter(
+            (order) => !heldOrderIds.has(order.id),
+          );
+          return (
+            <s-section heading="New item after shipping paid" padding="base">
+              <s-stack direction="block" gap="large">
+                <s-box
+                  background="base"
+                  borderWidth="base"
+                  borderStyle="solid"
+                  borderColor="subdued"
+                  borderRadius="large-100"
+                  padding="large"
+                >
+                  <s-stack direction="block" gap="base">
+                    <s-badge
+                      tone={visibleAlerts.length > 0 ? "warning" : "success"}
+                      color="strong"
+                    >
+                      {visibleAlerts.length} pending
+                    </s-badge>
+                    <s-paragraph>
+                      Ship now opens the exact order in Shopify Admin so staff
+                      can fulfil it, add tracking, and notify the customer
+                      manually. Hold for next Thursday adds the tag{" "}
+                      <s-text type="strong">hold-for-next-cycle</s-text>.
+                    </s-paragraph>
+                  </s-stack>
+                </s-box>
+                {visibleAlerts.length === 0 ? (
                   <s-paragraph>No alerts right now.</s-paragraph>
                 ) : (
                   <s-stack direction="block" gap="base">
@@ -945,27 +1243,39 @@ import { useEffect, useRef, useState, startTransition } from "react";
                       />
                     ))}
                   </s-stack>
-                );
-              })()}
-            </s-stack>
-          </s-section>
-        )}
+                )}
+              </s-stack>
+            </s-section>
+          );
+        })()}
 
         {tab === "friday" && (
           <s-section heading="Friday reset" padding="base">
             <s-stack direction="block" gap="large">
-              <s-stack direction="block" gap="base">
-                <s-paragraph>
-                  On Friday midnight (CST), Shopify Flow removes{" "}
-                  <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
-                  <s-text type="strong">pushed-to-next-weekend</s-text>. The
-                  app then cancels the old unpaid draft invoice.
-                </s-paragraph>
-                <s-paragraph>
-                  Use the buttons below only as a manual backup if Flow did
-                  not run.
-                </s-paragraph>
-              </s-stack>
+              <s-box
+                background="base"
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor="subdued"
+                borderRadius="large-100"
+                padding="large"
+              >
+                <s-stack direction="block" gap="base">
+                  <s-badge tone="success" color="strong">
+                    Automatic via Shopify Flow
+                  </s-badge>
+                  <s-paragraph>
+                    On Friday midnight (CST), Shopify Flow removes{" "}
+                    <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
+                    <s-text type="strong">pushed-to-next-weekend</s-text>. The
+                    app then cancels the old unpaid draft invoice.
+                  </s-paragraph>
+                  <s-paragraph>
+                    Use the buttons below only as a manual backup if Flow did
+                    not run.
+                  </s-paragraph>
+                </s-stack>
+              </s-box>
               <s-button-group gap="base" accessibilityLabel="Friday reset actions">
                 <s-button
                   slot="secondary-actions"
