@@ -15,11 +15,22 @@ type AccordionItem = {
   content: ReactNode;
 };
 
+const TONE_ICON: Record<
+  NonNullable<AccordionItem["tone"]>,
+  "info" | "check-circle-filled" | "alert-triangle" | "alert-diamond" | "circle"
+> = {
+  info: "info",
+  success: "check-circle-filled",
+  warning: "alert-triangle",
+  caution: "alert-diamond",
+  neutral: "circle",
+};
+
 function DocAccordion({ items }: { items: AccordionItem[] }) {
   const [openId, setOpenId] = useState<string>(items[0]?.id ?? "");
 
   return (
-    <s-stack gap="small">
+    <s-stack gap="base">
       {items.map((item, index) => {
         const open = openId === item.id;
         const badgeTone = item.tone ?? "info";
@@ -27,15 +38,15 @@ function DocAccordion({ items }: { items: AccordionItem[] }) {
           <s-box
             key={item.id}
             background={open ? "subdued" : "base"}
-            borderWidth="base"
+            borderWidth={open ? "large" : "base"}
             borderStyle="solid"
             borderColor={open ? "strong" : "subdued"}
-            borderRadius="large"
+            borderRadius="large-100"
             padding="none"
             overflow="hidden"
           >
             <s-clickable
-              padding="base"
+              padding="large"
               inlineSize="100%"
               background={open ? "subdued" : "transparent"}
               accessibilityLabel={`${open ? "Collapse" : "Expand"} ${item.title}`}
@@ -48,10 +59,12 @@ function DocAccordion({ items }: { items: AccordionItem[] }) {
                 gap="base"
                 inlineSize="100%"
               >
-                <s-stack direction="inline" alignItems="center" gap="small-200">
+                <s-stack direction="inline" alignItems="center" gap="base">
                   <s-badge
                     tone={open ? badgeTone : "neutral"}
-                    color={open ? "strong" : "base"}
+                    color="strong"
+                    size="large-100"
+                    icon={TONE_ICON[badgeTone]}
                   >
                     {String(index + 1).padStart(2, "0")}
                   </s-badge>
@@ -60,13 +73,14 @@ function DocAccordion({ items }: { items: AccordionItem[] }) {
                 <s-icon
                   type={open ? "caret-up" : "caret-down"}
                   tone={open ? badgeTone : "neutral"}
+                  size="base"
                 />
               </s-stack>
             </s-clickable>
             {open ? (
               <>
                 <s-divider color="strong" />
-                <s-box background="base" padding="base">
+                <s-box background="base" padding="large">
                   {item.content}
                 </s-box>
               </>
